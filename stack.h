@@ -1,6 +1,7 @@
 #ifndef STACK
 #define STACK
 
+typedef int err_t;
 typedef double stackElem_t;
 #define STACK_ELEM_FORMAT  "%lg"
 #define STACK_POISON NAN
@@ -28,6 +29,55 @@ typedef double stackElem_t;
 #include <stdint.h>
 #include <string.h>
 #include <math.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
+//! All possible errors this stack working
+enum {
+    INIT_NUM = 100,     //! Starting value for protecting
+
+    ERR_OK,             //! All good
+    ERR_CTOR,           //! Getted stack was already constructed
+    ERR_NULL_STACK,     //! Getted null-pointer to stack
+    ERR_CALLOC,         //! If calloc returned NULL
+    ERR_REALLOC,        //! If realloc returned NULL
+    ERR_CAPACITY,       //! Incorrect capacity value
+    ERR_FILEOPEN,       //! fopen returned NULL
+    ERR_BAD_SIZE,       //! The size is more than capacity
+    ERR_ZERO_SIZE,      //! Stack try to return value but size is zero
+    ERR_SIGN_SIZE,      //! The size is less than zero
+    ERR_DATA_PTR,       //! Pointer to the stack if null, but stack already constructed
+    ERR_SIGN_CAPACITY,  //! The capacity is less than zero
+    ERR_FAKE_POP_PTR,   //! Stack try to return poison value
+    ERR_MEMORY_INIT,    //! Incorrect pointers for the place of new memory
+    ERR_NULL_POINTER,   //! Getted null-pointer to stack
+    ERR_DATA_BEGIN,     //! Getted null-pointer to begin of data
+    ERR_RESIZE,         //! Error by StackResize
+    ERR_UP_RESIZE,      //! Size != capacity but program try to increase stack
+    ERR_DOWN_RESIZE,    //! Size is pretty big but program try to reduce stack
+    ERR_LEFT_CANARY,    //! Left canary was not defined
+    ERR_RIGHT_CANARY,   //! Right canary was not defined
+    ERR_HASH,           //! Stack data was changed
+
+//---------------------------------------------------------
+// Errors with processor
+
+    ERR_BYTECODE,
+    ERR_COMMAND,     // False command in byte code
+    ERR_PROCESSING,
+    ERR_PUSH_COM,
+    ERR_ADD_COM,
+    ERR_DIV_COM,
+
+};
+
+//! Commands for StackResize()
+enum resizeCommand {
+    
+    MEM_UP   = 10, //! Increase memory
+    MEM_DOWN = 20, //! Reduce memory
+
+};
 
 //! Stack and all using parameters
 struct stack_t {
@@ -97,6 +147,49 @@ const char LOGFILE_NAME[] = "MyLogfile.txt";
 // --------------------------------------------------------------------------
 //  Functions
 // --------------------------------------------------------------------------
+
+//! Minimal capacity for increasing stack
+const ssize_t MIN_CAPACITY = 5;
+
+//! Coefficient for increase in several times
+const int MEMORY_UP_COEFF = 2;
+
+//! Stack initialisation
+err_t StackCtor(stack_t * stk, ssize_t capacity);
+
+err_t NewMemoryInit(stack_t * stk, stackElem_t * firstIndex, stackElem_t * lastIndex);
+
+//! Stack distraction
+err_t StackDtor(stack_t * stk);
+
+//! Standard push
+err_t StackPush(stack_t * stk, stackElem_t value);
+//! Standard pop
+stackElem_t StackPop(stack_t * stk, err_t * PopStatus);
+
+//! Change memory size
+//! command: MEM_UP for increase, MEM_DOWN for reduce
+err_t StackResize(stack_t * stk, resizeCommand command);
+
+//! Checking all possibly stack errors
+err_t CheckStackError(const stack_t * stk);
+
+//! Get error description
+const char * ErrorDescription(err_t errCode);
+
+//! Verification of all errors
+err_t StackVerify(const stack_t * stk, err_t ERR_CODE);
+
+//! Calculate hash value
+size_t DjbHash(const void *data, size_t size);
+
+//! Update hash value
+size_t StackHash(stack_t *stk);
+
+//! Pointer to LogFile
+static FILE * LOGFILE = NULL;
+
+err_t CheckFile(FILE * file_p);
 
 //! Maximum complete stack printout
 void StackDump(FILE * stream, const stack_t * stk);
