@@ -357,6 +357,7 @@ size_t StackHash(stack_t *stk) {
     return stk->hash;
 
     #endif
+    return false;
 }
 
 

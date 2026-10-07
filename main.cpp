@@ -17,21 +17,24 @@ enum COMMANDS {
     SUB_C  = 3,
     DIV_C  = 4,
     OUT_C  = 5,
-    HLT_C,
+    HLT_C  = 6,
 };
-
-const double NO_ARGS = 1.5;
 
 //const char * FILE_BYTECODE = "bytecode.txt";
 
 int GetFilenameStd(int argc, char * argv[], FileStat * fileInfo);
 
 //! Fill buffer from file
+//! Text from the file is placed into buffer
+err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile);
+
 int ReadTxtFile(const char filename[], FileStat * fileInfo);
 
 size_t StringsParser(char * buffer, char diffElem, char ** index);
 
 void FillIndexes(FileStat * fileInfo);
+
+void PrintStrings(FILE * stream, char ** index_ptr, size_t nStrings);
 
 size_t CountElems(const char * string, int Elem);
 
@@ -43,7 +46,9 @@ int ReadByteCode(const FileStat * txtFile, int * codeBuffer);
 int GetByteCode(const int argc, char * argv[], int ** byteCode);
 
 //! Main virtual machine
-stackElem_t VirtualMachine(int * byteCode, int byteCodeLen);
+err_t VirtualMachine(int * byteCode, int byteCodeLen);
+
+err_t Assembler(const char * asmSourceName, const char * byteCodeName);
 
 int RunCommand(int * byteCode, stack_t * stack, int commandCode);
 
@@ -58,6 +63,7 @@ stackElem_t OutCom(stack_t * stack);
 int main(const int argc, char * argv[]) {
 
     // fill code buffer
+    /*
     int * byteCode = NULL;
 
     int byteCodeLen = GetByteCode(argc, argv, &byteCode);
@@ -66,9 +72,17 @@ int main(const int argc, char * argv[]) {
         printf(RED "ERR_BYTECODE\n" RESET);
         return false;
     }
-    ASSERT(byteCode);
+        */
 
-    printf(GREEN "Output = " STACK_ELEM_FORMAT "\n" RESET, VirtualMachine(byteCode, byteCodeLen));
+    Assembler("asm.txt", "Bytecodes.txt");
+    /*
+
+    err_t processStat = VirtualMachine(byteCode, byteCodeLen);
+
+    if (processStat != ERR_OK) {
+        printf(BOLD_RED "Virtual machine returned false value\n" RESET);
+    } 
+        */
 
     return true;
 }
@@ -82,13 +96,12 @@ int GetByteCode(const int argc, char * argv[], int ** byteCode) {
     if (!GetFilenameStd(argc, argv, &txtFile)) ASSERT(0);
     if (!ReadTxtFile(txtFile.readFrom, &txtFile)) ASSERT(0);
 
-    //txtFile.nLines = CountElems(txtFile.text_ptr, '\0');
     printf("Number of '0' = %zu\n", txtFile.nLines);
 
     int * newBuffer = (int *)calloc(txtFile.nLines, 2 * sizeof(int));
 
     if (!newBuffer) {
-        printf("newBuffer error\n");
+        printf("ERR_CALLOC: newBuffer error\n");
         return ERR_BYTECODE;
     }
 
@@ -113,7 +126,67 @@ int GetByteCode(const int argc, char * argv[], int ** byteCode) {
 
 }
 
-stackElem_t VirtualMachine(int * byteCode, int byteCodeLen) {
+err_t Assembler(const char * asmSourceName, const char * byteCodeName) {
+
+    ASSERT(asmSourceName);
+    ASSERT(byteCodeName);
+    ASSERT((byteCodeName != asmSourceName));
+
+    FileStat f_asmSource = {};
+
+    FILE * byteCode  = fopen(byteCodeName, "w");
+
+    int * asmSource = NULL;
+    int getAsmStat = FGetInfoBuffer(asmSourceName, &asmSource, &f_asmSource);
+
+    if (getAsmStat != ERR_OK) {
+        return ERR_ASM;
+    }
+    ASSERT(asmSource);
+
+    PrintStrings(byteCode, f_asmSource.index, f_asmSource.nLines);
+
+    fclose(byteCode);
+
+    return ERR_OK;
+}
+
+err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile) {
+
+    ASSERT(fileName);
+    ASSERT(infoBuffer);
+
+    if (!ReadTxtFile(fileName, txtFile)) ASSERT(0);
+
+    printf("File: <%s>, number of '0' = %zu\n", fileName, txtFile->nLines);
+
+    int * newBuffer = (int *)calloc(txtFile->nLines, 2 * sizeof(int));
+
+    if (!newBuffer) {
+        printf("ERR_CALLOC: newBuffer error\n");
+        return ERR_BYTECODE;
+    }
+
+    *infoBuffer = newBuffer;
+
+    return ERR_OK;
+
+}
+
+void PrintStrings(FILE * stream, char ** index_ptr, size_t nStrings) {
+
+    ASSERT(index_ptr);
+    ASSERT(*index_ptr);
+
+    for (size_t count = 0; count < nStrings; count++) {
+
+        ASSERT(index_ptr[count]);
+        fprintf(stream, "%s\n", index_ptr[count]);
+
+    }
+}
+
+err_t VirtualMachine(int * byteCode, int byteCodeLen) {
 
     ASSERT(byteCode);
 
@@ -122,15 +195,28 @@ stackElem_t VirtualMachine(int * byteCode, int byteCodeLen) {
     stack_t stack = {};
     StackCtor(&stack, 10);
 
-    FILE * file_p = fopen("dump.txt", "w");
+    FILE * file_p = fopen("dump.txt", "w"); // TODO filename from stdin
 
-    while ((i <= byteCodeLen) && (byteCode[i] != HLT_C)) {
+    stackElem_t outResult = 0;
+
+    while ((i <= byteCodeLen)) {
 
         StackDump(file_p, &stack);
 
+        if (byteCode[i] == HLT_C) {
+            printf(BOLD_GREEN "Output: " STACK_ELEM_FORMAT "\n" RESET, outResult);
+            return ERR_OK;
+        }
+
         if (byteCode[i] == OUT_C) {
-            printf(GREEN "OutCom\n" RESET);
-            return OutCom(&stack);
+            stackElem_t out = OutCom(&stack);
+
+            if (out == ERR_COMMAND) return ERR_OUT_PROCESSING;
+
+            outResult = out;
+            i++;
+            printf("OUT = " STACK_ELEM_FORMAT "\n", outResult);
+            continue;
 
         }
 
@@ -145,11 +231,16 @@ stackElem_t VirtualMachine(int * byteCode, int byteCodeLen) {
 
     }
     fclose(file_p);
-    return 0;
+    //return ERR_PROCESSING;
 
+    ASSERT(0);
+    return false;
 }
 
 int RunCommand(int * byteCode, stack_t * stack, int index) {
+
+    ASSERT(stack);
+    ASSERT(byteCode);
 
     switch (byteCode[index])
     {
@@ -174,7 +265,6 @@ int RunCommand(int * byteCode, stack_t * stack, int index) {
         return OutCom(stack);
 
     case (HLT_C):
-        ASSERT(0);
         return 0;
     
     default:
@@ -189,6 +279,9 @@ int RunCommand(int * byteCode, stack_t * stack, int index) {
 
 int PushCom(int * byteCode, stack_t * stack, int index) {
 
+    ASSERT(byteCode);
+    ASSERT(stack);
+
     err_t pushStat = StackPush(stack, byteCode[index + 1]);
 
     if (pushStat != ERR_OK) return ERR_COMMAND;
@@ -199,6 +292,10 @@ int PushCom(int * byteCode, stack_t * stack, int index) {
 
 // Get 2 last elems from stack
 int GetTwoPop(stack_t * stack, int * a, int * b) {
+
+    ASSERT(stack);
+    ASSERT(a);
+    ASSERT(b);
 
     err_t popStat = ERR_OK;
 
@@ -214,6 +311,8 @@ int GetTwoPop(stack_t * stack, int * a, int * b) {
 }
 
 int AddCom(stack_t * stack) {
+
+    ASSERT(stack);
 
     int a = 0;
     int b = 0;
@@ -237,6 +336,8 @@ int AddCom(stack_t * stack) {
 
 int SubCom(stack_t * stack) {
 
+    ASSERT(stack);
+
     int a = 0, b = 0;
 
     if (GetTwoPop(stack, &a, &b) != ERR_OK) return ERR_COMMAND;
@@ -252,6 +353,8 @@ int SubCom(stack_t * stack) {
 }
 
 int DivCom(stack_t * stack) {
+
+    ASSERT(stack);
 
     int a = 0, b = 0;
 
@@ -269,6 +372,8 @@ int DivCom(stack_t * stack) {
 
 stackElem_t OutCom(stack_t * stack) {
 
+    ASSERT(stack);
+
     int outStat = ERR_OK;
     int out = StackPop(stack, &outStat);
 
@@ -280,6 +385,9 @@ stackElem_t OutCom(stack_t * stack) {
 //------------------------------------------------------------------
 
 int GetFilenameStd(int argc, char * argv[], FileStat * fileInfo) {
+
+    ASSERT(argv);
+    ASSERT(*argv);
 
     // add more if
         if ((argc == 5) && ((!strcmp(argv[1], "--readfile")  && !strcmp(argv[3], "--printfile")) ||
@@ -396,6 +504,8 @@ size_t CountElems(const char * string, int Elem) {
 }
 
 void PrintErrno(const char filename[], int err_inf) {
+
+    ASSERT(filename);
 
     printf(RED "File: <%s>\n", filename);
 

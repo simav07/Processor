@@ -68,7 +68,8 @@ enum {
     ERR_PUSH_COM,
     ERR_ADD_COM,
     ERR_DIV_COM,
-
+    ERR_OUT_PROCESSING,
+    ERR_ASM,
 };
 
 //! Commands for StackResize()
