@@ -22,6 +22,11 @@ enum COMMANDS {
 
 const int COMMAND_LEN = 10;
 
+const char * PROG_BYTECODE_FILE   = "pbytecode.txt";
+const char * PROG_ASM_SOURCE_FILE = "pcode.asm";
+const char * USER_BYTECODE_FILE   = "ubytecode.txt";
+const char * USER_ASM_SOURCE_FILE = "ucode.asm";
+
 //const char * FILE_BYTECODE = "bytecode.txt";
 
 int GetFilenameStd(int argc, char * argv[], FileStat * fileInfo);
@@ -78,7 +83,7 @@ int main(const int argc, char * argv[]) {
     }
         */
 
-    Assembler("asm.txt", "Bytecodes.txt");
+    Assembler(USER_ASM_SOURCE_FILE, PROG_BYTECODE_FILE);
     /*
 
     err_t processStat = VirtualMachine(byteCode, byteCodeLen);
@@ -150,7 +155,7 @@ err_t Assembler(const char * asmSourceName, const char * byteCodeName) {
 
     // PrintStrings(byteCode, f_asmSource.index, f_asmSource.nLines);
 
-    for (size_t i = 0; i < f_asmSource.nLines; i++) {
+    for (size_t i = 0; i < f_asmSource.nLines - 1; i++) {
 
         char command[COMMAND_LEN] = "";
         int var = 0;
@@ -161,8 +166,14 @@ err_t Assembler(const char * asmSourceName, const char * byteCodeName) {
         int newCommandCode = 0;
         int interpreterStat = Interpreter(command, &newCommandCode);
 
-        if (interpreterStat != ERR_OK) return ERR_INTPR;
+        if (interpreterStat != ERR_OK) {
+        
+            printf(BOLD_RED "Translation error: file <%s>, line %d\n"
+                            "Incorrect command\n" RESET, f_asmSource.readFrom, i + 1);
 
+            return ERR_INTPR;
+        
+        }
         printf(YELLOW "Command = %s, variable = %d\n" RESET, command, var);
 
         if (args == 1) {  // real command without argument
@@ -187,6 +198,8 @@ err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFil
 
     ASSERT(fileName);
     ASSERT(infoBuffer);
+
+    txtFile->readFrom = (char *)fileName;
 
     if (!ReadTxtFile(fileName, txtFile)) ASSERT(0);
 
