@@ -70,6 +70,7 @@ enum {
     ERR_DIV_COM,
     ERR_OUT_PROCESSING,
     ERR_ASM,
+    ERR_INTPR,
 };
 
 //! Commands for StackResize()

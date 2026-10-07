@@ -20,6 +20,8 @@ enum COMMANDS {
     HLT_C  = 6,
 };
 
+const int COMMAND_LEN = 10;
+
 //const char * FILE_BYTECODE = "bytecode.txt";
 
 int GetFilenameStd(int argc, char * argv[], FileStat * fileInfo);
@@ -49,6 +51,8 @@ int GetByteCode(const int argc, char * argv[], int ** byteCode);
 err_t VirtualMachine(int * byteCode, int byteCodeLen);
 
 err_t Assembler(const char * asmSourceName, const char * byteCodeName);
+
+err_t Interpreter(const char * command, int * commandCode);
 
 int RunCommand(int * byteCode, stack_t * stack, int commandCode);
 
@@ -144,8 +148,36 @@ err_t Assembler(const char * asmSourceName, const char * byteCodeName) {
     }
     ASSERT(asmSource);
 
-    PrintStrings(byteCode, f_asmSource.index, f_asmSource.nLines);
+    // PrintStrings(byteCode, f_asmSource.index, f_asmSource.nLines);
 
+    for (size_t i = 0; i < f_asmSource.nLines; i++) {
+
+        char command[COMMAND_LEN] = "";
+        int var = 0;
+
+        int args = sscanf(f_asmSource.index[i], "%s %d", command, &var);
+        printf(GREEN "Line = %d, args = %d\n" RESET, i, args);
+
+        int newCommandCode = 0;
+        int interpreterStat = Interpreter(command, &newCommandCode);
+
+        if (interpreterStat != ERR_OK) return ERR_INTPR;
+
+        printf(YELLOW "Command = %s, variable = %d\n" RESET, command, var);
+
+        if (args == 1) {  // real command without argument
+            fprintf(byteCode, "%d\n", newCommandCode);
+            continue;
+        }
+
+        else if (args == 2) {  // real command with one argument
+            fprintf(byteCode, "%d\t%d\n", newCommandCode, var);
+            continue;
+        }
+
+        else return ERR_INTPR;
+
+    }
     fclose(byteCode);
 
     return ERR_OK;
@@ -171,6 +203,41 @@ err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFil
 
     return ERR_OK;
 
+}
+
+err_t Interpreter(const char * command, int * commandCode) {
+
+    if (strcmp(command, "PUSH") == 0) {
+        *commandCode = PUSH_C;
+        return ERR_OK;
+    }
+
+    if (strcmp(command, "ADD") == 0) {
+        *commandCode = ADD_C;
+        return ERR_OK;
+    }
+
+    if (strcmp(command, "SUB") == 0) {
+        *commandCode = SUB_C;
+        return ERR_OK;
+    }
+
+    if (strcmp(command, "DIV") == 0) {
+        *commandCode = DIV_C;
+        return ERR_OK;
+    }
+
+    if (strcmp(command, "OUT") == 0) {
+        *commandCode = OUT_C;
+        return ERR_OK;
+    }
+
+    if (strcmp(command, "HLT") == 0) {
+        *commandCode = HLT_C;
+        return ERR_OK;
+    }
+
+    return ERR_INTPR;
 }
 
 void PrintStrings(FILE * stream, char ** index_ptr, size_t nStrings) {
