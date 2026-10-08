@@ -11,6 +11,11 @@ struct FileStat {
     char * printTo  = NULL;
 };
 
+struct AsmFilesInfo {
+    char * readFrom = NULL;
+    char * writeTo  = NULL;
+};
+
 enum COMMANDS {
     PUSH_C = 1,
     ADD_C  = 2,
@@ -27,9 +32,14 @@ const char * PROG_ASM_SOURCE_FILE = "pcode.asm";
 const char * USER_BYTECODE_FILE   = "ubytecode.txt";
 const char * USER_ASM_SOURCE_FILE = "ucode.asm";
 
-//const char * FILE_BYTECODE = "bytecode.txt";
+//! User commands from stdin
+const char * CMD_FLAG_ASM      = "--asmsource";
+const char * CMD_FLAG_BYTECODE = "--bytecode";
 
-int GetFilenameStd(int argc, char * argv[], FileStat * fileInfo);
+//! File for StackDump, there we can see what happening with stack
+const char * FILE_STACKDUMP = "dump.txt";
+
+int GetFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo);
 
 //! Fill buffer from file
 //! Text from the file is placed into buffer
@@ -50,7 +60,7 @@ void PrintErrno(const char filename[], int err_inf);
 //! Fill byte code buffer
 int ReadByteCode(const FileStat * txtFile, int * codeBuffer);
 
-int GetByteCode(const int argc, char * argv[], int ** byteCode);
+int GetByteCode(int ** byteCode, AsmFilesInfo * fileInfo);
 
 //! Main virtual machine
 err_t VirtualMachine(int * byteCode, int byteCodeLen);
@@ -81,33 +91,51 @@ int main(const int argc, char * argv[]) {
         printf(RED "ERR_BYTECODE\n" RESET);
         return false;
     }
-        */
-
-    Assembler(USER_ASM_SOURCE_FILE, PROG_BYTECODE_FILE);
-    /*
 
     err_t processStat = VirtualMachine(byteCode, byteCodeLen);
 
     if (processStat != ERR_OK) {
         printf(BOLD_RED "Virtual machine returned false value\n" RESET);
-    } 
+    }
         */
+
+    AsmFilesInfo asmInfo = {};
+
+    int filenamesStat = GetFilenameStd(argc, argv, &asmInfo);
+
+    // user asm source
+    Assembler(asmInfo.readFrom, asmInfo.writeTo);
+
+    printf("%s, %s\n", asmInfo.readFrom, asmInfo.writeTo);
+
+    if (strcmp(asmInfo.readFrom, USER_ASM_SOURCE_FILE) != 0) ASSERT(0);
+
+    int * byteCode = NULL;
+
+    int byteCodeLen = GetByteCode(&byteCode, &asmInfo);
+
+    if (byteCodeLen == ERR_BYTECODE) {
+        printf(RED "ERR_BYTECODE\n" RESET);
+        return false;
+    }
+
+    VirtualMachine(byteCode, byteCodeLen);
+    //Assembler(USER_ASM_SOURCE_FILE, PROG_BYTECODE_FILE);
 
     return true;
 }
 
-int GetByteCode(const int argc, char * argv[], int ** byteCode) {
+int GetByteCode(int ** byteCode, AsmFilesInfo * fileInfo) {
 
-    ASSERT(argv);
+    ASSERT(byteCode);
+    ASSERT(fileInfo);
 
     FileStat txtFile = {};
 
-    if (!GetFilenameStd(argc, argv, &txtFile)) ASSERT(0);
-    if (!ReadTxtFile(txtFile.readFrom, &txtFile)) ASSERT(0);
+    //if (!GetFilenameStd(argc, argv, &txtFile)) ASSERT(0);
+    if (!ReadTxtFile(fileInfo->writeTo, &txtFile)) ASSERT(0);
 
-    printf("Number of '0' = %zu\n", txtFile.nLines);
-
-    int * newBuffer = (int *)calloc(txtFile.nLines, 2 * sizeof(int));
+    int * newBuffer = (int *)calloc(txtFile.nLines * 2, sizeof(int));
 
     if (!newBuffer) {
         printf("ERR_CALLOC: newBuffer error\n");
@@ -275,7 +303,7 @@ err_t VirtualMachine(int * byteCode, int byteCodeLen) {
     stack_t stack = {};
     StackCtor(&stack, 10);
 
-    FILE * file_p = fopen("dump.txt", "w"); // TODO filename from stdin
+    FILE * file_p = fopen(FILE_STACKDUMP, "w");
 
     stackElem_t outResult = 0;
 
@@ -311,7 +339,8 @@ err_t VirtualMachine(int * byteCode, int byteCodeLen) {
 
     }
     fclose(file_p);
-    //return ERR_PROCESSING;
+    
+    printf(BOLD_RED "In asm file no HLT command\n" RESET);
 
     ASSERT(0);
     return false;
@@ -464,28 +493,37 @@ stackElem_t OutCom(stack_t * stack) {
 }
 //------------------------------------------------------------------
 
-int GetFilenameStd(int argc, char * argv[], FileStat * fileInfo) {
+int GetFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo) {
 
     ASSERT(argv);
     ASSERT(*argv);
 
     // add more if
-        if ((argc == 5) && ((!strcmp(argv[1], "--readfile")  && !strcmp(argv[3], "--printfile")) ||
-                        (!strcmp(argv[1], "--printfile") && !strcmp(argv[3], "--readfile")))) {
-        if (!argv[2] || !argv[4]) return false;
+    if ((argc == 3) && (!strcmp(argv[1], CMD_FLAG_ASM) || (!strcmp(argv[1], CMD_FLAG_BYTECODE)))) {
 
-        if (!strcmp(argv[1], "--readfile")  && !strcmp(argv[3], "--printfile")) {
+        if (!argv[2]) return false;
+
+        //! User put asm filename, so processor must use assembler and get a bytecode
+        if (!strcmp(argv[1], CMD_FLAG_ASM)) {
 
             (*fileInfo).readFrom = argv[2];
-            (*fileInfo).printTo  = argv[4];
+            (*fileInfo).writeTo  = (char *)PROG_BYTECODE_FILE;
 
             return true;
         }
 
-        (*fileInfo).readFrom = argv[4];
-        (*fileInfo).printTo  = argv[2];
-        return true;
+        //! User put bytecode filename, so processor must use this bytecode and write a retranslation to asm
+        if (!strcmp(argv[1], CMD_FLAG_BYTECODE)) {
+
+            (*fileInfo).readFrom = argv[2];
+            (*fileInfo).writeTo  = (char *)PROG_ASM_SOURCE_FILE;
+
+            return true;
+        }
+
+        return false;
     }
+
     printf("\nError of reading stdin\n");
     return false;
 }
@@ -609,7 +647,12 @@ int ReadByteCode(const FileStat * txtFile, int * codeBuffer) {
         int var = 0;
 
         int args = sscanf(txtFile->index[i], "%d %d", &command, &var);
-        printf(GREEN "Line = %d, args = %d", i, args);
+        printf(GREEN "Line = %d, args = %d" RESET, i, args);
+
+        if (args == EOF || args == 0) {
+            // if theres an empty string
+            continue; 
+        }
 
         if ((args == 1) && (command >= 0)) {  // real command without argument
             codeBuffer[count] = command;
