@@ -18,7 +18,7 @@ struct AsmFilesInfo {
 
 struct VM_resource {
     stack_t stack = {};
-    int * byteCode = NULL; // refact to stackElem_t *
+    int * byteCode = NULL;
     size_t byteCodeLen = 0;
 };
 
@@ -58,6 +58,11 @@ err_t GetFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo);
 //! Text from the file is placed into buffer
 err_t PrepareByteCode(VM_resource * virtualMachine, const int argc, char * argv[]);
 
+//! Write commands to the file with byte code
+err_t WriteArguments(FILE * fileSource, int args, int newCommandCode, int newElem);
+
+err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const char * byteCodeName);
+
 err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile);
 
 //! Fill byte code buffer from txt
@@ -66,9 +71,9 @@ size_t ReadByteCode(const FileStat * txtFile, int * codeBuffer);
 size_t GetByteCode(int ** byteCode, AsmFilesInfo * fileInfo);
 
 //! Main virtual machine
-err_t RunVirtualMachine(int * byteCode, int byteCodeLen);
+err_t RunVirtualMachine(VM_resource * virtualMachine);
 
-err_t Assembler(const char * asmSourceName, const char * byteCodeName);
+err_t Assemble(const char * asmSourceName, const char * byteCodeName);
 
 err_t WriteHashCom(const char * source, const char * commandsFile);
 
@@ -85,7 +90,6 @@ err_t DivCom(stack_t * stack);
 stackElem_t OutCom(stack_t * stack);
 
 //! IO funcs
-
 err_t ReadTxtFile(const char filename[], FileStat * fileInfo);
 
 size_t StringsParser(char * buffer, char diffElem, char ** index);
@@ -110,7 +114,7 @@ int main(const int argc, char * argv[]) {
         return false;
     }
 
-    err_t processingStat = RunVirtualMachine(virtualMachine.byteCode, virtualMachine.byteCodeLen);
+    err_t processingStat = RunVirtualMachine(&virtualMachine);
 
     if (processingStat != ERR_OK) {
         // GetErrorDescription
@@ -128,7 +132,7 @@ err_t PrepareByteCode(VM_resource * virtualMachine, const int argc, char * argv[
     int filenamesStat = GetFilenameStd(argc, argv, &asmInfo);
 
     //! Asm source -> byte code
-    int asmStat = Assembler(asmInfo.readFrom, asmInfo.writeTo);
+    int asmStat = Assemble(asmInfo.readFrom, asmInfo.writeTo);
 
     if (asmStat != ERR_OK) {
         // error description
@@ -137,8 +141,6 @@ err_t PrepareByteCode(VM_resource * virtualMachine, const int argc, char * argv[
     }
 
     if (strcmp(asmInfo.readFrom, USER_ASM_SOURCE_FILE) != 0) ASSERT(0);
-
-    //int * byteCode = NULL;
 
     size_t byteCodeLen = GetByteCode(&(virtualMachine->byteCode), &asmInfo);
 
@@ -189,7 +191,7 @@ size_t GetByteCode(int ** byteCode, AsmFilesInfo * fileInfo) {
 
 }
 
-err_t Assembler(const char * asmSourceName, const char * byteCodeName) {
+err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
 
     ASSERT(asmSourceName);
     ASSERT(byteCodeName);
@@ -205,8 +207,16 @@ err_t Assembler(const char * asmSourceName, const char * byteCodeName) {
 
     FileStat fAsmSource = {};
 
-    FILE * byteCode  = fopen(byteCodeName, "w");
+    err_t prepareAsmStat = PrepareAsmSource(&fAsmSource, asmSourceName, byteCodeName);
+    if (prepareAsmStat != ERR_OK) {
+        printf("Error of reading asm source\n");
+        return ERR_ASM;
+    }
 
+    
+    FILE * byteCodeFile  = fopen(byteCodeName, "w");
+
+    /*
     int * asmSource = NULL;
     int getAsmStat = FGetInfoBuffer(asmSourceName, &asmSource, &fAsmSource);
 
@@ -214,6 +224,7 @@ err_t Assembler(const char * asmSourceName, const char * byteCodeName) {
         return ERR_ASM;
     }
     ASSERT(asmSource);
+    */
 
     // PrintStrings(byteCode, fAsmSource.index, fAsmSource.nLines);
 
@@ -221,10 +232,11 @@ err_t Assembler(const char * asmSourceName, const char * byteCodeName) {
 
         // new func
         char command[COMMAND_LEN] = "";
-        int var = 0;
+        int newElem = 0;
+        //int nArgs = 0;
 
-        int args = sscanf(fAsmSource.index[i], "%s %d", command, &var);
-        printf(GREEN "Line = %d, args = %d\n" RESET, i, args);
+        int nArgs = sscanf(fAsmSource.index[i], "%s %d", command, &newElem);
+        printf(GREEN "Line = %d, args = %d\n" RESET, i, nArgs);
 
         int newCommandCode = 0;
         int interpreterStat = GetCommandCode(command, strlen(command), &newCommandCode);
@@ -237,23 +249,17 @@ err_t Assembler(const char * asmSourceName, const char * byteCodeName) {
             return ERR_INTPR;
         
         }
-        printf(YELLOW "Command = %s, variable = %d\n" RESET, command, var);
 
-        // new func check args
-        if (args == 1) {  // real command without argument
-            fprintf(byteCode, "%d\n", newCommandCode);
-            continue;
+        // printf(YELLOW "Command = %s, variable = %d\n" RESET, command, newElem);
+
+        err_t writeArgsStat = WriteArguments(byteCodeFile, nArgs, newCommandCode, newElem);
+        if (writeArgsStat != ERR_OK) {
+            printf("Error of writing arguments to the byte code file\n");
+            return ERR_INTPR;
         }
-
-        else if (args == 2) {  // real command with one argument
-            fprintf(byteCode, "%d\t%d\n", newCommandCode, var);
-            continue;
-        }
-
-        else return ERR_INTPR;
 
     }
-    fclose(byteCode);
+    fclose(byteCodeFile);
 
     return ERR_OK;
 }
@@ -273,7 +279,7 @@ err_t WriteHashCom(const char * source, const char * commandsFile) {
     //! Making a enum with hash values of all commands in the "commandsFile"
 
     fprintf(fileForWriting, "// There's all hash values of all commands\n");
-    fprintf(fileForWriting, "#ifndef HASH_COMMANDS\n#define HASH_COMMANDS\n");
+    fprintf(fileForWriting, "#ifndef HASH_COMMANDS\n#define HASH_COMMANDS\n\n");
     fprintf(fileForWriting, "enum HASH_COMMANDS {\n");
 
     for (size_t i = 0; i < sourceFile.nLines - 1; i++) {
@@ -290,12 +296,49 @@ err_t WriteHashCom(const char * source, const char * commandsFile) {
 
     }
 
-    fprintf(fileForWriting, "};\n");
+    fprintf(fileForWriting, "\n};\n");
     fprintf(fileForWriting, "#endif");
 
     fclose(fileForWriting);
 
     return ERR_OK;
+}
+
+err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const char * byteCodeName) {
+
+    ASSERT(fAsmSource);
+
+    int * asmSource = NULL;
+    int getAsmStat = FGetInfoBuffer(asmSourceName, &asmSource, fAsmSource);
+
+    if (getAsmStat != ERR_OK) {
+        return ERR_ASM;
+    }
+    ASSERT(asmSource);
+
+    return ERR_OK;
+}
+
+err_t WriteArguments(FILE * fileSource, int args, int newCommandCode, int newElem) {
+
+    ASSERT(fileSource);
+
+    if (args == 1) {  // real command without argument
+
+        fprintf(fileSource, "%d\n", newCommandCode);
+        return ERR_OK;
+
+    }
+
+    if (args == 2) {  // real command with one argument
+
+        fprintf(fileSource, "%d\t%d\n", newCommandCode, newElem);
+        return ERR_OK;
+
+    }
+
+    return ERR_INTPR;
+
 }
 
 err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile) {
@@ -379,30 +422,31 @@ void PrintStrings(FILE * stream, char ** index_ptr, size_t nStrings) {
     }
 }
 
-err_t RunVirtualMachine(int * byteCode, int byteCodeLen) {
+err_t RunVirtualMachine(VM_resource * virtualMachine) {
 
-    ASSERT(byteCode);
+    ASSERT(virtualMachine);
+    ASSERT(virtualMachine->byteCode);
 
     size_t pc = 0;
 
-    stack_t stack = {};
-    StackCtor(&stack, 10);
+    //stack_t stack = {};
+    StackCtor(&(virtualMachine->stack), 10);
 
     FILE * file_p = fopen(FILE_STACKDUMP, "w");
 
     stackElem_t outResult = 0;
 
-    while ((pc <= byteCodeLen)) {
+    while (virtualMachine->byteCode[pc] != HLT_C) {
 
-        StackDump(file_p, &stack);
+        StackDump(file_p, &(virtualMachine->stack));
 
-        if (byteCode[pc] == HLT_C) {
-            printf(BOLD_GREEN "Output: " STACK_ELEM_FORMAT "\n" RESET, outResult);
-            return ERR_OK;
+        if (pc > virtualMachine->byteCodeLen) {
+            printf(BOLD_RED "In asm file no HLT command\n" RESET);
+            return ERR_PROCESSING;
         }
 
-        if (byteCode[pc] == OUT_C) {
-            stackElem_t out = OutCom(&stack);
+        if (virtualMachine->byteCode[pc] == OUT_C) {
+            stackElem_t out = OutCom(&(virtualMachine->stack));
 
             if (out == ERR_COMMAND) return ERR_OUT_PROCESSING;
 
@@ -412,7 +456,7 @@ err_t RunVirtualMachine(int * byteCode, int byteCodeLen) {
 
         }
 
-        int goOn = Interpreter(byteCode, &stack, pc);
+        int goOn = Interpreter(virtualMachine->byteCode, &(virtualMachine->stack), pc);
 
         if (goOn == ERR_COMMAND) {
             printf(RED "ERROR_PROCESSING\n" RESET);
@@ -422,11 +466,10 @@ err_t RunVirtualMachine(int * byteCode, int byteCodeLen) {
 
     }
     fclose(file_p);
-    
-    printf(BOLD_RED "In asm file no HLT command\n" RESET);
 
-    ASSERT(0);
-    return false;
+    printf(BOLD_GREEN "Output: " STACK_ELEM_FORMAT "\n" RESET, outResult);
+
+    return ERR_OK;
 }
 
 err_t Interpreter(int * byteCode, stack_t * stack, int index) {
@@ -725,9 +768,9 @@ size_t ReadByteCode(const FileStat * txtFile, int * codeBuffer) {
     for (size_t i = 0; i < txtFile->nLines; i++) {
 
         int command = -1; // -1 using only for init, there's no real commands with code that equals -1
-        int var = 0;
+        int newElem = 0;
 
-        int args = sscanf(txtFile->index[i], "%d %d", &command, &var);
+        int args = sscanf(txtFile->index[i], "%d %d", &command, &newElem);
         printf(GREEN "Line = %d, args = %d" RESET, i, args);
 
         if (args == EOF || args == 0) {
@@ -742,12 +785,12 @@ size_t ReadByteCode(const FileStat * txtFile, int * codeBuffer) {
 
         else if ((args == 2) && (command >= 0)) {  // real command with one argument
             codeBuffer[count++] = command;
-            codeBuffer[count++] = var;
+            codeBuffer[count++] = newElem;
         }
 
         else return ERR_BYTECODE;
 
-        printf(YELLOW "Command = %d, variable = %d\n" RESET, command, var);
+        printf(YELLOW "Command = %d, variable = %d\n" RESET, command, newElem);
     }
     
     return count;
