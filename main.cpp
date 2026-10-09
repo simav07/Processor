@@ -72,7 +72,7 @@ err_t Assembler(const char * asmSourceName, const char * byteCodeName);
 
 int WriteHashCom(const char * source, const char * commandsFile);
 
-err_t Interpreter(const char * command, int * commandCode);
+err_t Interpreter(const char * command, size_t commandSize, int * commandCode);
 
 int RunCommand(int * byteCode, stack_t * stack, int commandCode);
 
@@ -198,7 +198,7 @@ err_t Assembler(const char * asmSourceName, const char * byteCodeName) {
         printf(GREEN "Line = %d, args = %d\n" RESET, i, args);
 
         int newCommandCode = 0;
-        int interpreterStat = Interpreter(command, &newCommandCode);
+        int interpreterStat = Interpreter(command, strlen(command), &newCommandCode);
 
         if (interpreterStat != ERR_OK) {
         
@@ -254,9 +254,9 @@ int WriteHashCom(const char * source, const char * commandsFile) {
             return ERR_WRITEHASH;
         }
 
-        size_t commandHash = DjbHash((const void *)newCommand, sizeof(newCommand));
+        size_t commandHash = DjbHash((const void *)newCommand, strlen(newCommand));
 
-        fprintf(fileForWriting, "\t%s = %zu,\n", newCommand, commandHash);
+        fprintf(fileForWriting, "\tHASH_%s = %zu,\n", newCommand, commandHash);
 
     }
 
@@ -292,8 +292,41 @@ err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFil
 
 }
 
-err_t Interpreter(const char * command, int * commandCode) {
+err_t Interpreter(const char * command, size_t commandSize, int * commandCode) {
 
+    size_t hashCommand = DjbHash((const void *)command, commandSize);
+    printf("Hash value of <%s> in Interpreter: %zu\n", command, hashCommand);
+
+    switch(hashCommand) {
+
+    case (HASH_PUSH):
+        *commandCode = PUSH_C;
+        return ERR_OK;
+    
+    case (HASH_ADD):
+        *commandCode = ADD_C;
+        return ERR_OK;
+
+    case (HASH_SUB):
+        *commandCode = SUB_C;
+        return ERR_OK;
+
+    case (HASH_DIV):
+        *commandCode = DIV_C;
+        return ERR_OK;
+
+    case (HASH_OUT):
+        *commandCode = OUT_C;
+        return ERR_OK;
+    
+    case (HASH_HLT):
+        *commandCode = HLT_C;
+        return ERR_OK;
+
+    default:
+        return ERR_INTPR;
+    }
+    /*
     if (strcmp(command, "PUSH") == 0) {
         *commandCode = PUSH_C;
         return ERR_OK;
@@ -323,6 +356,7 @@ err_t Interpreter(const char * command, int * commandCode) {
         *commandCode = HLT_C;
         return ERR_OK;
     }
+        */
 
     return ERR_INTPR;
 }
