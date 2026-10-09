@@ -16,6 +16,12 @@ struct AsmFilesInfo {
     char * writeTo  = NULL;
 };
 
+struct VirtualMachine {
+    stack_t stack = {};
+    int * byteCode = NULL; // refact to stackElem_t *
+    size_t byteCodeLen = 0;
+};
+
 enum COMMANDS {
     PUSH_C = 1,
     ADD_C  = 2,
@@ -27,8 +33,12 @@ enum COMMANDS {
 
 const int COMMAND_LEN = 10;
 
-const char * COMMANDS_SOURCE    = "comsrc.txt";
-const char * HASH_COMMANDS_FILE = "commands.h";
+//! Assembler's files for calculating hash values of commands
+
+const char * COMMANDS_SOURCE    = "comsrc.txt"; //! File with commands for assembler
+const char * HASH_COMMANDS_FILE = "commands.h"; //! Auto-generated file with enum of hash values
+
+//! Filenames for writing bytecode or asm source
 
 const char * PROG_BYTECODE_FILE   = "pbytecode.txt";
 const char * PROG_ASM_SOURCE_FILE = "pcode.asm";
@@ -42,13 +52,13 @@ const char * CMD_FLAG_BYTECODE = "--bytecode";
 //! File for StackDump, there we can see what happening with stack
 const char * FILE_STACKDUMP = "dump.txt";
 
-int GetFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo);
+err_t GetFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo);
 
 //! Fill buffer from file
 //! Text from the file is placed into buffer
 err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile);
 
-int ReadTxtFile(const char filename[], FileStat * fileInfo);
+err_t ReadTxtFile(const char filename[], FileStat * fileInfo);
 
 size_t StringsParser(char * buffer, char diffElem, char ** index);
 
@@ -61,7 +71,7 @@ size_t CountElems(const char * string, int Elem);
 void PrintErrno(const char filename[], int err_inf);
 
 //! Fill byte code buffer
-int ReadByteCode(const FileStat * txtFile, int * codeBuffer);
+err_t ReadByteCode(const FileStat * txtFile, int * codeBuffer);
 
 int GetByteCode(int ** byteCode, AsmFilesInfo * fileInfo);
 
@@ -70,21 +80,23 @@ err_t VirtualMachine(int * byteCode, int byteCodeLen);
 
 err_t Assembler(const char * asmSourceName, const char * byteCodeName);
 
-int WriteHashCom(const char * source, const char * commandsFile);
+err_t WriteHashCom(const char * source, const char * commandsFile);
 
-err_t Interpreter(const char * command, size_t commandSize, int * commandCode);
+err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode);
 
-int RunCommand(int * byteCode, stack_t * stack, int commandCode);
+err_t Interpreter(int * byteCode, stack_t * stack, int commandCode);
 
 //! Commands for virtual machine
-int PushCom(int * byteCode, stack_t * stack, int index);
-int GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b);
-int AddCom(stack_t * stack);
-int SubCom(stack_t * stack);
-int DivCom(stack_t * stack);
+err_t PushCom(int * byteCode, stack_t * stack, int index);
+err_t GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b);
+err_t AddCom(stack_t * stack);
+err_t SubCom(stack_t * stack);
+err_t DivCom(stack_t * stack);
 stackElem_t OutCom(stack_t * stack);
 
 int main(const int argc, char * argv[]) {
+
+    // функция чтения asm source и заполнения byte code
 
     AsmFilesInfo asmInfo = {};
 
@@ -175,41 +187,43 @@ err_t Assembler(const char * asmSourceName, const char * byteCodeName) {
         return ERR_ASM;
     }
 
-    FileStat f_asmSource = {};
+    FileStat fAsmSource = {};
 
     FILE * byteCode  = fopen(byteCodeName, "w");
 
     int * asmSource = NULL;
-    int getAsmStat = FGetInfoBuffer(asmSourceName, &asmSource, &f_asmSource);
+    int getAsmStat = FGetInfoBuffer(asmSourceName, &asmSource, &fAsmSource);
 
     if (getAsmStat != ERR_OK) {
         return ERR_ASM;
     }
     ASSERT(asmSource);
 
-    // PrintStrings(byteCode, f_asmSource.index, f_asmSource.nLines);
+    // PrintStrings(byteCode, fAsmSource.index, fAsmSource.nLines);
 
-    for (size_t i = 0; i < f_asmSource.nLines - 1; i++) {
+    for (size_t i = 0; i < fAsmSource.nLines - 1; i++) {
 
+        // new func
         char command[COMMAND_LEN] = "";
         int var = 0;
 
-        int args = sscanf(f_asmSource.index[i], "%s %d", command, &var);
+        int args = sscanf(fAsmSource.index[i], "%s %d", command, &var);
         printf(GREEN "Line = %d, args = %d\n" RESET, i, args);
 
         int newCommandCode = 0;
-        int interpreterStat = Interpreter(command, strlen(command), &newCommandCode);
+        int interpreterStat = GetCommandCode(command, strlen(command), &newCommandCode);
 
         if (interpreterStat != ERR_OK) {
         
             printf(BOLD_RED "Translation error: file <%s>, line %d\n"
-                            "Incorrect command\n" RESET, f_asmSource.readFrom, i + 1);
+                            "Incorrect command\n" RESET, fAsmSource.readFrom, i + 1);
 
             return ERR_INTPR;
         
         }
         printf(YELLOW "Command = %s, variable = %d\n" RESET, command, var);
 
+        // new func check args
         if (args == 1) {  // real command without argument
             fprintf(byteCode, "%d\n", newCommandCode);
             continue;
@@ -228,7 +242,7 @@ err_t Assembler(const char * asmSourceName, const char * byteCodeName) {
     return ERR_OK;
 }
 
-int WriteHashCom(const char * source, const char * commandsFile) {
+err_t WriteHashCom(const char * source, const char * commandsFile) {
 
     FileStat sourceFile = {};
 
@@ -292,10 +306,10 @@ err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFil
 
 }
 
-err_t Interpreter(const char * command, size_t commandSize, int * commandCode) {
+err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode) {
 
     size_t hashCommand = DjbHash((const void *)command, commandSize);
-    printf("Hash value of <%s> in Interpreter: %zu\n", command, hashCommand);
+    printf("Hash value of <%s> in GetCommandCode: %zu\n", command, hashCommand);
 
     switch(hashCommand) {
 
@@ -353,7 +367,7 @@ err_t VirtualMachine(int * byteCode, int byteCodeLen) {
 
     ASSERT(byteCode);
 
-    int i = 0;
+    size_t pc = 0;
 
     stack_t stack = {};
     StackCtor(&stack, 10);
@@ -362,35 +376,33 @@ err_t VirtualMachine(int * byteCode, int byteCodeLen) {
 
     stackElem_t outResult = 0;
 
-    while ((i <= byteCodeLen)) {
+    while ((pc <= byteCodeLen)) {
 
         StackDump(file_p, &stack);
 
-        if (byteCode[i] == HLT_C) {
+        if (byteCode[pc] == HLT_C) {
             printf(BOLD_GREEN "Output: " STACK_ELEM_FORMAT "\n" RESET, outResult);
             return ERR_OK;
         }
 
-        if (byteCode[i] == OUT_C) {
+        if (byteCode[pc] == OUT_C) {
             stackElem_t out = OutCom(&stack);
 
             if (out == ERR_COMMAND) return ERR_OUT_PROCESSING;
 
             outResult = out;
-            i++;
-            printf("OUT = %lg\n", outResult);
+            pc++;
             continue;
 
         }
 
-        int pc = RunCommand(byteCode, &stack, i);
-        printf("i = %d\n", i);
+        int goOn = Interpreter(byteCode, &stack, pc);
 
-        if (pc == ERR_COMMAND) {
+        if (goOn == ERR_COMMAND) {
             printf(RED "ERROR_PROCESSING\n" RESET);
             return ERR_PROCESSING;
         }
-        i = i + pc;
+        pc = pc + goOn;
 
     }
     fclose(file_p);
@@ -401,7 +413,7 @@ err_t VirtualMachine(int * byteCode, int byteCodeLen) {
     return false;
 }
 
-int RunCommand(int * byteCode, stack_t * stack, int index) {
+err_t Interpreter(int * byteCode, stack_t * stack, int index) {
 
     ASSERT(stack);
     ASSERT(byteCode);
@@ -441,7 +453,7 @@ int RunCommand(int * byteCode, stack_t * stack, int index) {
 // Functions for processor
 //------------------------------------------------------------------
 
-int PushCom(int * byteCode, stack_t * stack, int index) {
+err_t PushCom(int * byteCode, stack_t * stack, int index) {
 
     ASSERT(byteCode);
     ASSERT(stack);
@@ -455,7 +467,7 @@ int PushCom(int * byteCode, stack_t * stack, int index) {
 }
 
 // Get 2 last elems from stack
-int GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b) {
+err_t GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b) {
 
     ASSERT(stack);
     ASSERT(a);
@@ -474,7 +486,7 @@ int GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b) {
     return ERR_OK;
 }
 
-int AddCom(stack_t * stack) {
+err_t AddCom(stack_t * stack) {
 
     ASSERT(stack);
 
@@ -498,7 +510,7 @@ int AddCom(stack_t * stack) {
 
 }
 
-int SubCom(stack_t * stack) {
+err_t SubCom(stack_t * stack) {
 
     ASSERT(stack);
 
@@ -516,15 +528,13 @@ int SubCom(stack_t * stack) {
 
 }
 
-int DivCom(stack_t * stack) {
+err_t DivCom(stack_t * stack) {
 
     ASSERT(stack);
 
     stackElem_t a = 0, b = 0;
 
     if (GetTwoPop(stack, &a, &b) != ERR_OK) return ERR_COMMAND;
-
-    printf("Div = %d\n", b / a);
 
     int pushStat = StackPush(stack, (stackElem_t)((double)b / (double)a));
 
@@ -548,7 +558,7 @@ stackElem_t OutCom(stack_t * stack) {
 }
 //------------------------------------------------------------------
 
-int GetFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo) {
+err_t GetFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo) {
 
     ASSERT(argv);
     ASSERT(*argv);
@@ -583,7 +593,7 @@ int GetFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo) {
     return false;
 }
 
-int ReadTxtFile(const char filename[], FileStat * fileInfo) {
+err_t ReadTxtFile(const char filename[], FileStat * fileInfo) {
 
     ASSERT(filename);
     ASSERT(fileInfo);
@@ -688,7 +698,7 @@ void PrintErrno(const char filename[], int err_inf) {
     printf(RESET);
 }
 
-int ReadByteCode(const FileStat * txtFile, int * codeBuffer) {
+err_t ReadByteCode(const FileStat * txtFile, int * codeBuffer) {
 
     ASSERT(txtFile);
     ASSERT(codeBuffer);

@@ -75,7 +75,7 @@ enum {
     ERR_WRITEHASH,
 };
 
-//! Commands for StackResize()
+//! Commands for StackResize
 enum resizeCommand {
     
     MEM_UP   = 10, //! Increase memory
