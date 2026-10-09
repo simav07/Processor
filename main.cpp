@@ -16,7 +16,7 @@ struct AsmFilesInfo {
     char * writeTo  = NULL;
 };
 
-struct VirtualMachine {
+struct VM_resource {
     stack_t stack = {};
     int * byteCode = NULL; // refact to stackElem_t *
     size_t byteCodeLen = 0;
@@ -56,27 +56,17 @@ err_t GetFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo);
 
 //! Fill buffer from file
 //! Text from the file is placed into buffer
+err_t PrepareByteCode(VM_resource * virtualMachine, const int argc, char * argv[]);
+
 err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile);
 
-err_t ReadTxtFile(const char filename[], FileStat * fileInfo);
+//! Fill byte code buffer from txt
+size_t ReadByteCode(const FileStat * txtFile, int * codeBuffer);
 
-size_t StringsParser(char * buffer, char diffElem, char ** index);
-
-void FillIndexes(FileStat * fileInfo);
-
-void PrintStrings(FILE * stream, char ** index_ptr, size_t nStrings);
-
-size_t CountElems(const char * string, int Elem);
-
-void PrintErrno(const char filename[], int err_inf);
-
-//! Fill byte code buffer
-err_t ReadByteCode(const FileStat * txtFile, int * codeBuffer);
-
-int GetByteCode(int ** byteCode, AsmFilesInfo * fileInfo);
+size_t GetByteCode(int ** byteCode, AsmFilesInfo * fileInfo);
 
 //! Main virtual machine
-err_t VirtualMachine(int * byteCode, int byteCodeLen);
+err_t RunVirtualMachine(int * byteCode, int byteCodeLen);
 
 err_t Assembler(const char * asmSourceName, const char * byteCodeName);
 
@@ -94,9 +84,44 @@ err_t SubCom(stack_t * stack);
 err_t DivCom(stack_t * stack);
 stackElem_t OutCom(stack_t * stack);
 
+//! IO funcs
+
+err_t ReadTxtFile(const char filename[], FileStat * fileInfo);
+
+size_t StringsParser(char * buffer, char diffElem, char ** index);
+
+void FillIndexes(FileStat * fileInfo);
+
+void PrintStrings(FILE * stream, char ** index_ptr, size_t nStrings);
+
+size_t CountElems(const char * string, int Elem);
+
+void PrintErrno(const char filename[], int err_inf);
+
 int main(const int argc, char * argv[]) {
 
-    // функция чтения asm source и заполнения byte code
+    VM_resource virtualMachine = {};
+    
+    err_t preparingStat = PrepareByteCode(&virtualMachine, argc, argv);
+
+    if (preparingStat != ERR_OK) {
+        // error description
+        printf("ERROR OF MAKING BYTE CODE\n");
+        return false;
+    }
+
+    err_t processingStat = RunVirtualMachine(virtualMachine.byteCode, virtualMachine.byteCodeLen);
+
+    if (processingStat != ERR_OK) {
+        // GetErrorDescription
+        printf("ERROR OF VIRTUAL MACHINE\n");
+        return false;
+    }
+
+    return true;
+}
+
+err_t PrepareByteCode(VM_resource * virtualMachine, const int argc, char * argv[]) {
 
     AsmFilesInfo asmInfo = {};
 
@@ -108,34 +133,27 @@ int main(const int argc, char * argv[]) {
     if (asmStat != ERR_OK) {
         // error description
         printf("ERR_ASM\n");
-        return false;
+        return ERR_ASM;
     }
 
-    //printf("%s, %s\n", asmInfo.readFrom, asmInfo.writeTo);
+    if (strcmp(asmInfo.readFrom, USER_ASM_SOURCE_FILE) != 0) ASSERT(0);
 
-    if (strcmp(asmInfo.readFrom, USER_ASM_SOURCE_FILE) != 0) ASSERT(0); // for disassembler
+    //int * byteCode = NULL;
 
-    int * byteCode = NULL;
-
-    int byteCodeLen = GetByteCode(&byteCode, &asmInfo);
+    size_t byteCodeLen = GetByteCode(&(virtualMachine->byteCode), &asmInfo);
 
     if (byteCodeLen == ERR_BYTECODE) {
         printf(RED "ERR_BYTECODE\n" RESET);
-        return false;
+        return ERR_BYTECODE;
     }
 
-    int processingStat = VirtualMachine(byteCode, byteCodeLen);
+    virtualMachine->byteCodeLen = byteCodeLen;
 
-    if (processingStat != ERR_OK) {
-        // GetErrorDescription
-        printf("ERROR OF VIRTUAL MACHINE\n");
-        return false;
-    }
+    return ERR_OK;
 
-    return true;
 }
 
-int GetByteCode(int ** byteCode, AsmFilesInfo * fileInfo) {
+size_t GetByteCode(int ** byteCode, AsmFilesInfo * fileInfo) {
 
     ASSERT(byteCode);
     ASSERT(fileInfo);
@@ -154,9 +172,7 @@ int GetByteCode(int ** byteCode, AsmFilesInfo * fileInfo) {
 
     *byteCode = newBuffer;
 
-    int codeBytesLen = ReadByteCode(&txtFile, *byteCode);
-
-    printf("ByteCodeLen = %d\n", codeBytesLen);
+    size_t codeBytesLen = ReadByteCode(&txtFile, *byteCode);
 
     if (codeBytesLen == ERR_BYTECODE) {
         printf("ERR_BYTECODE\n");
@@ -363,7 +379,7 @@ void PrintStrings(FILE * stream, char ** index_ptr, size_t nStrings) {
     }
 }
 
-err_t VirtualMachine(int * byteCode, int byteCodeLen) {
+err_t RunVirtualMachine(int * byteCode, int byteCodeLen) {
 
     ASSERT(byteCode);
 
@@ -698,7 +714,7 @@ void PrintErrno(const char filename[], int err_inf) {
     printf(RESET);
 }
 
-err_t ReadByteCode(const FileStat * txtFile, int * codeBuffer) {
+size_t ReadByteCode(const FileStat * txtFile, int * codeBuffer) {
 
     ASSERT(txtFile);
     ASSERT(codeBuffer);
