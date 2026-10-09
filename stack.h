@@ -18,6 +18,7 @@ typedef double stackElem_t;
 #endif
 
 #include "colors.h"
+#include "commands.h"
 
 #include <stdio.h>
 #include <ctype.h>
@@ -71,6 +72,7 @@ enum {
     ERR_OUT_PROCESSING,
     ERR_ASM,
     ERR_INTPR,
+    ERR_WRITEHASH,
 };
 
 //! Commands for StackResize()

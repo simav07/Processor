@@ -27,6 +27,9 @@ enum COMMANDS {
 
 const int COMMAND_LEN = 10;
 
+const char * COMMANDS_SOURCE    = "comsrc.txt";
+const char * HASH_COMMANDS_FILE = "commands.h";
+
 const char * PROG_BYTECODE_FILE   = "pbytecode.txt";
 const char * PROG_ASM_SOURCE_FILE = "pcode.asm";
 const char * USER_BYTECODE_FILE   = "ubytecode.txt";
@@ -67,6 +70,8 @@ err_t VirtualMachine(int * byteCode, int byteCodeLen);
 
 err_t Assembler(const char * asmSourceName, const char * byteCodeName);
 
+int WriteHashCom(const char * source, const char * commandsFile);
+
 err_t Interpreter(const char * command, int * commandCode);
 
 int RunCommand(int * byteCode, stack_t * stack, int commandCode);
@@ -81,34 +86,22 @@ stackElem_t OutCom(stack_t * stack);
 
 int main(const int argc, char * argv[]) {
 
-    // fill code buffer
-    /*
-    int * byteCode = NULL;
-
-    int byteCodeLen = GetByteCode(argc, argv, &byteCode);
-
-    if (byteCodeLen == ERR_BYTECODE) {
-        printf(RED "ERR_BYTECODE\n" RESET);
-        return false;
-    }
-
-    err_t processStat = VirtualMachine(byteCode, byteCodeLen);
-
-    if (processStat != ERR_OK) {
-        printf(BOLD_RED "Virtual machine returned false value\n" RESET);
-    }
-        */
-
     AsmFilesInfo asmInfo = {};
 
     int filenamesStat = GetFilenameStd(argc, argv, &asmInfo);
 
-    // user asm source
-    Assembler(asmInfo.readFrom, asmInfo.writeTo);
+    //! Asm source -> byte code
+    int asmStat = Assembler(asmInfo.readFrom, asmInfo.writeTo);
 
-    printf("%s, %s\n", asmInfo.readFrom, asmInfo.writeTo);
+    if (asmStat != ERR_OK) {
+        // error description
+        printf("ERR_ASM\n");
+        return false;
+    }
 
-    if (strcmp(asmInfo.readFrom, USER_ASM_SOURCE_FILE) != 0) ASSERT(0);
+    //printf("%s, %s\n", asmInfo.readFrom, asmInfo.writeTo);
+
+    if (strcmp(asmInfo.readFrom, USER_ASM_SOURCE_FILE) != 0) ASSERT(0); // for disassembler
 
     int * byteCode = NULL;
 
@@ -119,8 +112,13 @@ int main(const int argc, char * argv[]) {
         return false;
     }
 
-    VirtualMachine(byteCode, byteCodeLen);
-    //Assembler(USER_ASM_SOURCE_FILE, PROG_BYTECODE_FILE);
+    int processingStat = VirtualMachine(byteCode, byteCodeLen);
+
+    if (processingStat != ERR_OK) {
+        // GetErrorDescription
+        printf("ERROR OF VIRTUAL MACHINE\n");
+        return false;
+    }
 
     return true;
 }
@@ -168,6 +166,14 @@ err_t Assembler(const char * asmSourceName, const char * byteCodeName) {
     ASSERT(asmSourceName);
     ASSERT(byteCodeName);
     ASSERT((byteCodeName != asmSourceName));
+
+    //! Get hash values of using commands
+    int hashStat = WriteHashCom(COMMANDS_SOURCE, HASH_COMMANDS_FILE);
+    if (hashStat != ERR_OK) {
+        // error description
+        printf(RED "Error of getting hash values of commands\n" RESET);
+        return ERR_ASM;
+    }
 
     FileStat f_asmSource = {};
 
@@ -222,6 +228,46 @@ err_t Assembler(const char * asmSourceName, const char * byteCodeName) {
     return ERR_OK;
 }
 
+int WriteHashCom(const char * source, const char * commandsFile) {
+
+    FileStat sourceFile = {};
+
+    int readStat = ReadTxtFile(source, &sourceFile);
+    if (!readStat) {
+        printf(BOLD_RED "Error of reading file <%s>\n" RESET);
+        return ERR_FILEOPEN;
+    }
+
+    FILE * fileForWriting = fopen(commandsFile, "w");
+
+    //! Making a enum with hash values of all commands in the "commandsFile"
+
+    fprintf(fileForWriting, "// There's all hash values of all commands\n");
+    fprintf(fileForWriting, "#ifndef HASH_COMMANDS\n#define HASH_COMMANDS\n");
+    fprintf(fileForWriting, "enum HASH_COMMANDS {\n");
+
+    for (size_t i = 0; i < sourceFile.nLines - 1; i++) {
+
+        char * newCommand = sourceFile.index[i];
+        if (newCommand == NULL) {
+            printf("NULL-pointer to newCommand.\n");
+            return ERR_WRITEHASH;
+        }
+
+        size_t commandHash = DjbHash((const void *)newCommand, sizeof(newCommand));
+
+        fprintf(fileForWriting, "\t%s = %zu,\n", newCommand, commandHash);
+
+    }
+
+    fprintf(fileForWriting, "};\n");
+    fprintf(fileForWriting, "#endif");
+
+    fclose(fileForWriting);
+
+    return ERR_OK;
+}
+
 err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile) {
 
     ASSERT(fileName);
@@ -233,11 +279,11 @@ err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFil
 
     printf("File: <%s>, number of '0' = %zu\n", fileName, txtFile->nLines);
 
-    int * newBuffer = (int *)calloc(txtFile->nLines, 2 * sizeof(int));
+    int * newBuffer = (int *)calloc(txtFile->nLines * 2, sizeof(int));
 
     if (!newBuffer) {
         printf("ERR_CALLOC: newBuffer error\n");
-        return ERR_BYTECODE;
+        return ERR_CALLOC;
     }
 
     *infoBuffer = newBuffer;
