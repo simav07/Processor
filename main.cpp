@@ -78,7 +78,7 @@ int RunCommand(int * byteCode, stack_t * stack, int commandCode);
 
 //! Commands for virtual machine
 int PushCom(int * byteCode, stack_t * stack, int index);
-int GetTwoPop(stack_t * stack, int * a, int * b);
+int GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b);
 int AddCom(stack_t * stack);
 int SubCom(stack_t * stack);
 int DivCom(stack_t * stack);
@@ -300,63 +300,38 @@ err_t Interpreter(const char * command, size_t commandSize, int * commandCode) {
     switch(hashCommand) {
 
     case (HASH_PUSH):
+        if (strcmp(command, "PUSH") != 0) return ERR_INTPR;
         *commandCode = PUSH_C;
         return ERR_OK;
     
     case (HASH_ADD):
+        if (strcmp(command, "ADD") != 0) return ERR_INTPR;
         *commandCode = ADD_C;
         return ERR_OK;
 
     case (HASH_SUB):
+        if (strcmp(command, "SUB") != 0) return ERR_INTPR;
         *commandCode = SUB_C;
         return ERR_OK;
 
     case (HASH_DIV):
+        if (strcmp(command, "DIV") != 0) return ERR_INTPR;
         *commandCode = DIV_C;
         return ERR_OK;
 
     case (HASH_OUT):
+        if (strcmp(command, "OUT") != 0) return ERR_INTPR;
         *commandCode = OUT_C;
         return ERR_OK;
     
     case (HASH_HLT):
+        if (strcmp(command, "HLT") != 0) return ERR_INTPR;
         *commandCode = HLT_C;
         return ERR_OK;
 
     default:
         return ERR_INTPR;
     }
-    /*
-    if (strcmp(command, "PUSH") == 0) {
-        *commandCode = PUSH_C;
-        return ERR_OK;
-    }
-
-    if (strcmp(command, "ADD") == 0) {
-        *commandCode = ADD_C;
-        return ERR_OK;
-    }
-
-    if (strcmp(command, "SUB") == 0) {
-        *commandCode = SUB_C;
-        return ERR_OK;
-    }
-
-    if (strcmp(command, "DIV") == 0) {
-        *commandCode = DIV_C;
-        return ERR_OK;
-    }
-
-    if (strcmp(command, "OUT") == 0) {
-        *commandCode = OUT_C;
-        return ERR_OK;
-    }
-
-    if (strcmp(command, "HLT") == 0) {
-        *commandCode = HLT_C;
-        return ERR_OK;
-    }
-        */
 
     return ERR_INTPR;
 }
@@ -403,7 +378,7 @@ err_t VirtualMachine(int * byteCode, int byteCodeLen) {
 
             outResult = out;
             i++;
-            printf("OUT = " STACK_ELEM_FORMAT "\n", outResult);
+            printf("OUT = %lg\n", outResult);
             continue;
 
         }
@@ -480,7 +455,7 @@ int PushCom(int * byteCode, stack_t * stack, int index) {
 }
 
 // Get 2 last elems from stack
-int GetTwoPop(stack_t * stack, int * a, int * b) {
+int GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b) {
 
     ASSERT(stack);
     ASSERT(a);
@@ -488,10 +463,10 @@ int GetTwoPop(stack_t * stack, int * a, int * b) {
 
     err_t popStat = ERR_OK;
 
-    *a = (int)StackPop(stack, &popStat);
+    *a = StackPop(stack, &popStat);
     if (popStat != ERR_OK) return ERR_COMMAND;
 
-    *b = (int)StackPop(stack, &popStat);
+    *b = StackPop(stack, &popStat);
     if (popStat != ERR_OK) return ERR_COMMAND;
 
     printf("Getted: %d, %d\n", *a, *b);
@@ -503,8 +478,8 @@ int AddCom(stack_t * stack) {
 
     ASSERT(stack);
 
-    int a = 0;
-    int b = 0;
+    double a = 0;
+    double b = 0;
 
     if (GetTwoPop(stack, &a, &b) != ERR_OK) {
         printf("Can't get a and b\n");
@@ -527,7 +502,7 @@ int SubCom(stack_t * stack) {
 
     ASSERT(stack);
 
-    int a = 0, b = 0;
+    stackElem_t a = 0, b = 0;
 
     if (GetTwoPop(stack, &a, &b) != ERR_OK) return ERR_COMMAND;
 
@@ -545,7 +520,7 @@ int DivCom(stack_t * stack) {
 
     ASSERT(stack);
 
-    int a = 0, b = 0;
+    stackElem_t a = 0, b = 0;
 
     if (GetTwoPop(stack, &a, &b) != ERR_OK) return ERR_COMMAND;
 
@@ -564,7 +539,7 @@ stackElem_t OutCom(stack_t * stack) {
     ASSERT(stack);
 
     int outStat = ERR_OK;
-    int out = StackPop(stack, &outStat);
+    stackElem_t out = StackPop(stack, &outStat);
 
     if (outStat != ERR_OK) return ERR_COMMAND;
 
