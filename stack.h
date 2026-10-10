@@ -75,6 +75,16 @@ enum {
     ERR_WRITEHASH,
 };
 
+//! Commands for virtual machine
+enum COMMANDS {
+    PUSH_C = 1,
+    ADD_C  = 2,
+    SUB_C  = 3,
+    DIV_C  = 4,
+    OUT_C  = 5,
+    HLT_C  = 6,
+};
+
 //! Commands for StackResize
 enum resizeCommand {
     
@@ -92,6 +102,11 @@ struct FileStat {
     unsigned int sizeOfElem = sizeof(char);
     char * readFrom = NULL;
     char * printTo  = NULL;
+};
+
+struct AsmFilesInfo {
+    char * readFrom = NULL;
+    char * writeTo  = NULL;
 };
 
 //! Stack and all using parameters
@@ -123,6 +138,12 @@ struct stack_t {
     #endif
 };
 
+struct VM_resource {
+    stack_t stack = {};
+    int * byteCode = NULL;
+    size_t byteCodeLen = 0;
+};
+
 //! Filename for logging
 const char LOGFILE_NAME[] = "MyLogfile.txt";
 
@@ -142,9 +163,9 @@ const char LOGFILE_NAME[] = "MyLogfile.txt";
 #define ASSERT(right_instr) (void)0
 #endif
 
-//-------------------------------------------------------------------------
-// LOGGING
-//-------------------------------------------------------------------------
+//!-------------------------------------------------------------------------
+//! LOGGING
+//!-------------------------------------------------------------------------
 
 #ifdef LOG_MODE
 
@@ -158,9 +179,32 @@ const char LOGFILE_NAME[] = "MyLogfile.txt";
 #define WRITE_ERROR_LOG (void)0
 #endif
 
-// --------------------------------------------------------------------------
-//  Functions
-// --------------------------------------------------------------------------
+//! -------------------------------------------------------------------------
+//! Functions for ASSEMBLER
+//! -------------------------------------------------------------------------
+
+err_t Assemble(const char * asmSourceName, const char * byteCodeName);
+
+//! Fill byte code buffer from txt
+size_t ReadByteCode(const FileStat * txtFile, int * codeBuffer);
+
+size_t GetByteCode(int ** byteCode, AsmFilesInfo * fileInfo);
+
+err_t WriteHashCom(const char * source, const char * commandsFile);
+
+err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode);
+
+//! Write commands to the file with byte code
+err_t WriteArguments(FILE * fileSource, int args, int newCommandCode, int newElem);
+err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const char * byteCodeName);
+err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs, char * command,
+                                                     int * newElem, int * newCommandCode);
+
+err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile);
+
+//! --------------------------------------------------------------------------
+//!  Functions for STACK
+//! --------------------------------------------------------------------------
 
 //! Minimal capacity for increasing stack
 const ssize_t MIN_CAPACITY = 5;
@@ -214,7 +258,10 @@ void STACK_LOG(FILE * logFile, const stack_t * stk, const char stkName[], const 
 //! Write verified by StackVerify error to the logfile
 void WriteErrorLog(FILE * file_p, const char * message, const char * fileName, const char *funcName);
 
-//! IO funcs ---------------------------------------------------------
+//! ---------------------------------------------------------
+//! Functions for IO
+//! ---------------------------------------------------------
+
 err_t ReadTxtFile(const char filename[], FileStat * fileInfo);
 
 size_t StringsParser(char * buffer, char diffElem, char ** index);
