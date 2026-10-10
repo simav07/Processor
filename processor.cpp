@@ -1,24 +1,26 @@
 #include "stack.h"
 
-//! Filenames for writing bytecode or asm source
-
-const char * PROG_BYTECODE_FILE   = "pbytecode.txt";
-const char * PROG_ASM_SOURCE_FILE = "pcode.asm";
-const char * USER_BYTECODE_FILE   = "ubytecode.txt";
-const char * USER_ASM_SOURCE_FILE = "ucode.asm";
-
-//! User commands from stdin
-const char * CMD_FLAG_ASM      = "--asmsource";
+//! Flag for byte code filename
 const char * CMD_FLAG_BYTECODE = "--bytecode";
 
 //! File for StackDump, there we can see what happening with stack
 const char * FILE_STACKDUMP = "dump.txt";
 
+err_t GetBCfilenameStd(int argc, char * argv[], char readFromFile[]);
+
 //! Main virtual machine
 err_t RunVirtualMachine(VM_resource * virtualMachine);
 err_t PrepareByteCode(VM_resource * virtualMachine, const int argc, char * argv[]);
 
-err_t GetFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo);
+//! Fill byte code buffer from txt
+
+size_t GetByteCode(int ** byteCode, const char * byteCodeFilename);
+
+size_t ReadByteCode(const FileStat * txtFile, int * codeBuffer);
+
+err_t WriteHashCom(const char * source, const char * commandsFile);
+
+err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode);
 
 //! Interpreter: run commands
 err_t Interpreter(int * byteCode, stack_t * stack, int commandCode);
@@ -60,22 +62,18 @@ int main(const int argc, char * argv[]) {
 
 err_t PrepareByteCode(VM_resource * virtualMachine, const int argc, char * argv[]) {
 
-    AsmFilesInfo asmInfo = {};
+    ASSERT(virtualMachine);
+    ASSERT(argv);
 
-    int filenamesStat = GetFilenameStd(argc, argv, &asmInfo);
+    char byteCodeFile[100] = "";
 
-    //! Asm source -> byte code
-    int asmStat = Assemble(asmInfo.readFrom, asmInfo.writeTo);
-
-    if (asmStat != ERR_OK) {
-        // error description
-        printf("ERR_ASM\n");
+    int filenamesStat = GetBCfilenameStd(argc, argv, byteCodeFile);
+    if (filenamesStat != ERR_OK) {
+        printf("Error of reading bytecode filename\n");
         return ERR_ASM;
     }
 
-    if (strcmp(asmInfo.readFrom, USER_ASM_SOURCE_FILE) != 0) ASSERT(0);
-
-    size_t byteCodeLen = GetByteCode(&(virtualMachine->byteCode), &asmInfo);
+    size_t byteCodeLen = GetByteCode(&(virtualMachine->byteCode), byteCodeFile);
 
     if (byteCodeLen == ERR_BYTECODE) {
         printf(RED "ERR_BYTECODE\n" RESET);
@@ -274,38 +272,181 @@ stackElem_t OutCom(stack_t * stack) {
 }
 //------------------------------------------------------------------
 
+size_t GetByteCode(int ** byteCode, const char * byteCodeFilename) {
+
+    ASSERT(byteCode);
+
+    FileStat txtFile = {};
+
+    //if (!GetAsmFilenameStd(argc, argv, &txtFile)) ASSERT(0);
+    if (!ReadTxtFile(byteCodeFilename, &txtFile)) ASSERT(0);
+
+    int * newBuffer = (int *)calloc(txtFile.nLines * 2, sizeof(int));
+
+    if (!newBuffer) {
+        printf("ERR_CALLOC: newBuffer error\n");
+        return ERR_BYTECODE;
+    }
+
+    *byteCode = newBuffer;
+
+    size_t codeBytesLen = ReadByteCode(&txtFile, *byteCode);
+
+    if (codeBytesLen == ERR_BYTECODE) {
+        printf("ERR_BYTECODE\n");
+        return ERR_BYTECODE;
+    }
+
+    // Beauty print
+    for (int i = 0; i < codeBytesLen; i++) {
+
+        printf("[%d] ", *(*byteCode + i));
+
+    }
+    printf("\n");
+
+    return codeBytesLen;
+
+}
+
+err_t WriteHashCom(const char * source, const char * commandsFile) {
+
+    FileStat sourceFile = {};
+
+    int readStat = ReadTxtFile(source, &sourceFile);
+    if (!readStat) {
+        printf(BOLD_RED "Error of reading file <%s>\n" RESET);
+        return ERR_FILEOPEN;
+    }
+
+    FILE * fileForWriting = fopen(commandsFile, "w");
+
+    //! Making a enum with hash values of all commands in the "commandsFile"
+
+    fprintf(fileForWriting, "// There's all hash values of all commands\n");
+    fprintf(fileForWriting, "#ifndef HASH_COMMANDS\n#define HASH_COMMANDS\n\n");
+    fprintf(fileForWriting, "enum HASH_COMMANDS {\n");
+
+    for (size_t i = 0; i < sourceFile.nLines - 1; i++) {
+
+        char * newCommand = sourceFile.index[i];
+        if (newCommand == NULL) {
+            printf("NULL-pointer to newCommand.\n");
+            return ERR_WRITEHASH;
+        }
+
+        size_t commandHash = DjbHash((const void *)newCommand, strlen(newCommand));
+
+        fprintf(fileForWriting, "\tHASH_%s = %zu,\n", newCommand, commandHash);
+
+    }
+
+    fprintf(fileForWriting, "\n};\n");
+    fprintf(fileForWriting, "#endif");
+
+    fclose(fileForWriting);
+
+    return ERR_OK;
+}
+
+size_t ReadByteCode(const FileStat * txtFile, int * codeBuffer) {
+
+    ASSERT(txtFile);
+    ASSERT(codeBuffer);
+
+    // Count of elements that are writing to codeBuffer
+    size_t count = 0;
+
+    for (size_t i = 0; i < txtFile->nLines; i++) {
+
+        int command = -1; // -1 using only for init, there's no real commands with code that equals -1
+        int newElem = 0;
+
+        int args = sscanf(txtFile->index[i], "%d %d", &command, &newElem);
+
+        if (args == EOF || args == 0) {
+            // if theres an empty string
+            continue; 
+        }
+
+        if ((args == 1) && (command >= 0)) {  // real command without argument
+            codeBuffer[count] = command;
+            count++;
+        }
+
+        else if ((args == 2) && (command >= 0)) {  // real command with one argument
+            codeBuffer[count++] = command;
+            codeBuffer[count++] = newElem;
+        }
+
+        else return ERR_BYTECODE;
+
+    }
+    
+    return count;
+    
+}
+err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode) {
+
+    size_t hashCommand = DjbHash((const void *)command, commandSize);
+
+    switch(hashCommand) {
+
+    case (HASH_PUSH):
+        if (strcmp(command, "PUSH") != 0) return ERR_INTPR;
+        *commandCode = PUSH_C;
+        return ERR_OK;
+    
+    case (HASH_ADD):
+        if (strcmp(command, "ADD") != 0) return ERR_INTPR;
+        *commandCode = ADD_C;
+        return ERR_OK;
+
+    case (HASH_SUB):
+        if (strcmp(command, "SUB") != 0) return ERR_INTPR;
+        *commandCode = SUB_C;
+        return ERR_OK;
+
+    case (HASH_DIV):
+        if (strcmp(command, "DIV") != 0) return ERR_INTPR;
+        *commandCode = DIV_C;
+        return ERR_OK;
+
+    case (HASH_OUT):
+        if (strcmp(command, "OUT") != 0) return ERR_INTPR;
+        *commandCode = OUT_C;
+        return ERR_OK;
+    
+    case (HASH_HLT):
+        if (strcmp(command, "HLT") != 0) return ERR_INTPR;
+        *commandCode = HLT_C;
+        return ERR_OK;
+
+    default:
+        return ERR_INTPR;
+    }
+
+    return ERR_INTPR;
+}
+
 // IO functions ----------------------------------------------------
-err_t GetFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo) {
-
+err_t GetBCfilenameStd(int argc, char * argv[], char * readFromFile) {
     ASSERT(argv);
-    ASSERT(*argv);
+    ASSERT(readFromFile);
 
-    // add more if
-    if ((argc == 3) && (!strcmp(argv[1], CMD_FLAG_ASM) || (!strcmp(argv[1], CMD_FLAG_BYTECODE)))) {
+    if ((argc == 3) && (!strcmp(argv[1], CMD_FLAG_BYTECODE))) {
 
-        if (!argv[2]) return false;
+        if (!argv[2]) return ERR_FILEOPEN;
 
-        //! User put asm filename, so processor must use assembler and get a bytecode
-        if (!strcmp(argv[1], CMD_FLAG_ASM)) {
+        //! User put bytecode filename, so processor must use this bytecode
+        size_t len = strlen(argv[2]);
+        memcpy(readFromFile, argv[2], len + 1);  // +1 for '\0'
 
-            (*fileInfo).readFrom = argv[2];
-            (*fileInfo).writeTo  = (char *)PROG_BYTECODE_FILE;
+        printf(YELLOW "Filename: <%s>\n" RESET, argv[2]);
 
-            return true;
-        }
-
-        //! User put bytecode filename, so processor must use this bytecode and write a retranslation to asm
-        if (!strcmp(argv[1], CMD_FLAG_BYTECODE)) {
-
-            (*fileInfo).readFrom = argv[2];
-            (*fileInfo).writeTo  = (char *)PROG_ASM_SOURCE_FILE;
-
-            return true;
-        }
-
-        return false;
+        return ERR_OK;
     }
 
     printf("\nError of reading stdin\n");
-    return false;
+    return ERR_FILEOPEN;
 }

@@ -1,5 +1,17 @@
 #include "stack.h"
 
+struct AsmFilesInfo {
+    char * readFrom = NULL;
+    char * writeTo  = NULL;
+};
+
+
+//! Flag for user's filename of asm source
+const char * CMD_FLAG_ASM = "--asmsource";
+
+//! Default filename for writing a byte code 
+const char * PROG_BYTECODE_FILE = "pbytecode.txt";
+
 //! Assembler's files for calculating hash values of commands
 
 const char * COMMANDS_SOURCE    = "comsrc.txt"; //! File with commands for assembler
@@ -8,9 +20,76 @@ const char * HASH_COMMANDS_FILE = "commands.h"; //! Auto-generated file with enu
 //! Max command length for commands (bad)
 const int COMMAND_LEN = 10;
 
-// ------------------------------------------------------------------------------------
-// Functions
-// ------------------------------------------------------------------------------------
+//! -------------------------------------------------------------------------
+//! Functions for ASSEMBLER
+//! -------------------------------------------------------------------------
+
+err_t GetAsmFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo);
+
+err_t Assemble(const char * asmSourceName, const char * byteCodeName);
+
+//! Fill byte code buffer from txt
+
+size_t GetByteCode(int ** byteCode, AsmFilesInfo * fileInfo);
+
+size_t ReadByteCode(const FileStat * txtFile, int * codeBuffer);
+
+err_t WriteHashCom(const char * source, const char * commandsFile);
+
+err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode);
+
+//! Write commands to the file with byte code
+err_t WriteArguments(FILE * fileSource, int args, int newCommandCode, int newElem);
+err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const char * byteCodeName);
+err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs, char * command,
+                                                     int * newElem, int * newCommandCode);
+
+err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile);
+
+int main(const int argc, char * argv[]) {
+
+    AsmFilesInfo asmInfo = {};
+
+    int filenamesStat = GetAsmFilenameStd(argc, argv, &asmInfo);
+
+    //! Asm source -> byte code
+    int asmStat = Assemble(asmInfo.readFrom, asmInfo.writeTo);
+
+    if (asmStat != ERR_OK) {
+        // error description
+        printf("ERR_ASM\n");
+        return ERR_ASM;
+    }
+
+    // if (strcmp(asmInfo.readFrom, USER_ASM_SOURCE_FILE) != 0) ASSERT(0);
+
+    printf(BOLD_GREEN "Successful assembling.\n" RESET);
+    printf("File with bytecode: <%s>\n", asmInfo.writeTo);
+    
+    return true;
+}
+
+err_t GetAsmFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo) {
+
+    ASSERT(argv);
+    ASSERT(*argv);
+
+    // add more if
+    if ((argc == 3) && (!strcmp(argv[1], CMD_FLAG_ASM))) {
+
+        if (!argv[2]) return false;
+
+        //! User put asm filename, so assembler must make a bytecode
+
+        (*fileInfo).readFrom = argv[2];
+        (*fileInfo).writeTo  = (char *)PROG_BYTECODE_FILE;
+
+        return true;
+    }
+
+    printf("\nError of reading stdin\n");
+    return false;
+}
 
 err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
 
@@ -85,7 +164,7 @@ size_t GetByteCode(int ** byteCode, AsmFilesInfo * fileInfo) {
 
     FileStat txtFile = {};
 
-    //if (!GetFilenameStd(argc, argv, &txtFile)) ASSERT(0);
+    //if (!GetAsmFilenameStd(argc, argv, &txtFile)) ASSERT(0);
     if (!ReadTxtFile(fileInfo->writeTo, &txtFile)) ASSERT(0);
 
     int * newBuffer = (int *)calloc(txtFile.nLines * 2, sizeof(int));
@@ -262,7 +341,6 @@ size_t ReadByteCode(const FileStat * txtFile, int * codeBuffer) {
 err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode) {
 
     size_t hashCommand = DjbHash((const void *)command, commandSize);
-    printf("Hash value of <%s> in GetCommandCode: %zu\n", command, hashCommand);
 
     switch(hashCommand) {
 

@@ -104,11 +104,6 @@ struct FileStat {
     char * printTo  = NULL;
 };
 
-struct AsmFilesInfo {
-    char * readFrom = NULL;
-    char * writeTo  = NULL;
-};
-
 //! Stack and all using parameters
 struct stack_t {
 
@@ -179,10 +174,13 @@ const char LOGFILE_NAME[] = "MyLogfile.txt";
 #define WRITE_ERROR_LOG (void)0
 #endif
 
+// go to IO .cpp
+// err_t GetFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo);
+
 //! -------------------------------------------------------------------------
 //! Functions for ASSEMBLER
 //! -------------------------------------------------------------------------
-
+/*
 err_t Assemble(const char * asmSourceName, const char * byteCodeName);
 
 //! Fill byte code buffer from txt
@@ -200,7 +198,7 @@ err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const 
 err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs, char * command,
                                                      int * newElem, int * newCommandCode);
 
-err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile);
+err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile); */
 
 //! --------------------------------------------------------------------------
 //!  Functions for STACK
