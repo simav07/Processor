@@ -188,7 +188,7 @@ stackElem_t StackPop(stack_t * stk, err_t * PopStatus) {
 
     //! Free up memory if there's a lot of space
     //! It works only if we have more than one realloc
-    /*if (((*stk).capacity > MIN_CAPACITY * 0.5) && (*stk).size < ((*stk).capacity / 4)) {
+    if (((*stk).capacity > MIN_CAPACITY) && (*stk).size < ((*stk).capacity / 4)) {
 
         err_t resizeStat = StackResize(stk, MEM_DOWN);
 
@@ -196,7 +196,7 @@ stackElem_t StackPop(stack_t * stk, err_t * PopStatus) {
 
         ASSERT((StackVerify(stk, resizeStat) == ERR_OK));
 
-    } */
+    }
 
     *PopStatus = ERR_OK;
 

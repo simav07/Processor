@@ -83,6 +83,17 @@ enum resizeCommand {
 
 };
 
+//! All used file information
+struct FileStat {
+    char * text_ptr = NULL;
+    char ** index = {};
+    off_t sizeInBytes = 0;
+    size_t nLines = 0;
+    unsigned int sizeOfElem = sizeof(char);
+    char * readFrom = NULL;
+    char * printTo  = NULL;
+};
+
 //! Stack and all using parameters
 struct stack_t {
 
@@ -145,7 +156,6 @@ const char LOGFILE_NAME[] = "MyLogfile.txt";
 #define STACK_LOGGING(logfile, stk) (void)0
 
 #define WRITE_ERROR_LOG (void)0
-
 #endif
 
 // --------------------------------------------------------------------------
@@ -203,5 +213,19 @@ void STACK_LOG(FILE * logFile, const stack_t * stk, const char stkName[], const 
 
 //! Write verified by StackVerify error to the logfile
 void WriteErrorLog(FILE * file_p, const char * message, const char * fileName, const char *funcName);
+
+//! IO funcs ---------------------------------------------------------
+err_t ReadTxtFile(const char filename[], FileStat * fileInfo);
+
+size_t StringsParser(char * buffer, char diffElem, char ** index);
+
+void FillIndexes(FileStat * fileInfo);
+
+void PrintStrings(FILE * stream, char ** index_ptr, size_t nStrings);
+
+size_t CountElems(const char * string, int Elem);
+
+void PrintErrno(const char filename[], int err_inf);
+// --------------------------------------------------------------------
 
 #endif
