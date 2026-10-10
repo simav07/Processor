@@ -63,6 +63,9 @@ err_t WriteArguments(FILE * fileSource, int args, int newCommandCode, int newEle
 
 err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const char * byteCodeName);
 
+err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs, char * command,
+                                                     int * newElem, int * newCommandCode);
+
 err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile);
 
 //! Fill byte code buffer from txt
@@ -233,12 +236,19 @@ err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
         // new func
         char command[COMMAND_LEN] = "";
         int newElem = 0;
-        //int nArgs = 0;
+        int nArgs = 0;
 
+        int newCommandCode = 0;
+
+        err_t getArgStat = GetCodeArguments(&fAsmSource, i, &nArgs, command, &newElem, &newCommandCode);
+        if (getArgStat != ERR_OK) {
+            printf("Error of getting args\n");
+            return ERR_INTPR;
+        }
+        /*
         int nArgs = sscanf(fAsmSource.index[i], "%s %d", command, &newElem);
         printf(GREEN "Line = %d, args = %d\n" RESET, i, nArgs);
 
-        int newCommandCode = 0;
         int interpreterStat = GetCommandCode(command, strlen(command), &newCommandCode);
 
         if (interpreterStat != ERR_OK) {
@@ -249,6 +259,7 @@ err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
             return ERR_INTPR;
         
         }
+            */
 
         // printf(YELLOW "Command = %s, variable = %d\n" RESET, command, newElem);
 
@@ -338,6 +349,27 @@ err_t WriteArguments(FILE * fileSource, int args, int newCommandCode, int newEle
     }
 
     return ERR_INTPR;
+
+}
+
+err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs, char * command,
+                                                     int * newElem, int * newCommandCode) {
+
+    *nArgs = sscanf(fAsmSource->index[i], "%s %d", command, newElem);
+    
+    printf(GREEN "Line = %d, args = %d\n" RESET, i, *nArgs);
+
+    int interpreterStat = GetCommandCode(command, strlen(command), newCommandCode);
+
+    if (interpreterStat != ERR_OK) {
+    
+        printf(BOLD_RED "Translation error: file <%s>, line %d\n"
+                        "Incorrect command\n" RESET, fAsmSource->readFrom, i + 1);
+        return ERR_INTPR;
+    
+    }
+
+    return ERR_OK;
 
 }
 
