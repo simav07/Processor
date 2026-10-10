@@ -6,7 +6,7 @@ const char * CMD_FLAG_BYTECODE = "--bytecode";
 //! File for StackDump, there we can see what happening with stack
 const char * FILE_STACKDUMP = "dump.txt";
 
-err_t GetBCfilenameStd(int argc, char * argv[], char readFromFile[]);
+err_t GetBCfilenameStd(int argc, char * argv[], char * readFromFile);
 
 //! Main virtual machine
 err_t RunVirtualMachine(VM_resource * virtualMachine);

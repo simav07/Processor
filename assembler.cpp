@@ -28,17 +28,11 @@ err_t GetAsmFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo);
 
 err_t Assemble(const char * asmSourceName, const char * byteCodeName);
 
-//! Fill byte code buffer from txt
-
-size_t GetByteCode(int ** byteCode, AsmFilesInfo * fileInfo);
-
-size_t ReadByteCode(const FileStat * txtFile, int * codeBuffer);
-
-err_t WriteHashCom(const char * source, const char * commandsFile);
-
 err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode);
 
 //! Write commands to the file with byte code
+err_t WriteHashCom(const char * source, const char * commandsFile);
+
 err_t WriteArguments(FILE * fileSource, int args, int newCommandCode, int newElem);
 err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const char * byteCodeName);
 err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs, char * command,
@@ -157,44 +151,6 @@ err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const 
     return ERR_OK;
 }
 
-size_t GetByteCode(int ** byteCode, AsmFilesInfo * fileInfo) {
-
-    ASSERT(byteCode);
-    ASSERT(fileInfo);
-
-    FileStat txtFile = {};
-
-    //if (!GetAsmFilenameStd(argc, argv, &txtFile)) ASSERT(0);
-    if (!ReadTxtFile(fileInfo->writeTo, &txtFile)) ASSERT(0);
-
-    int * newBuffer = (int *)calloc(txtFile.nLines * 2, sizeof(int));
-
-    if (!newBuffer) {
-        printf("ERR_CALLOC: newBuffer error\n");
-        return ERR_BYTECODE;
-    }
-
-    *byteCode = newBuffer;
-
-    size_t codeBytesLen = ReadByteCode(&txtFile, *byteCode);
-
-    if (codeBytesLen == ERR_BYTECODE) {
-        printf("ERR_BYTECODE\n");
-        return ERR_BYTECODE;
-    }
-
-    // Beauty print
-    for (int i = 0; i < codeBytesLen; i++) {
-
-        printf("[%d] ", *(*byteCode + i));
-
-    }
-    printf("\n");
-
-    return codeBytesLen;
-
-}
-
 err_t WriteHashCom(const char * source, const char * commandsFile) {
 
     FileStat sourceFile = {};
@@ -285,8 +241,6 @@ err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFil
 
     if (!ReadTxtFile(fileName, txtFile)) ASSERT(0);
 
-    printf("File: <%s>, number of '0' = %zu\n", fileName, txtFile->nLines);
-
     int * newBuffer = (int *)calloc(txtFile->nLines * 2, sizeof(int));
 
     if (!newBuffer) {
@@ -298,44 +252,6 @@ err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFil
 
     return ERR_OK;
 
-}
-
-size_t ReadByteCode(const FileStat * txtFile, int * codeBuffer) {
-
-    ASSERT(txtFile);
-    ASSERT(codeBuffer);
-
-    // Count of elements that are writing to codeBuffer
-    size_t count = 0;
-
-    for (size_t i = 0; i < txtFile->nLines; i++) {
-
-        int command = -1; // -1 using only for init, there's no real commands with code that equals -1
-        int newElem = 0;
-
-        int args = sscanf(txtFile->index[i], "%d %d", &command, &newElem);
-
-        if (args == EOF || args == 0) {
-            // if theres an empty string
-            continue; 
-        }
-
-        if ((args == 1) && (command >= 0)) {  // real command without argument
-            codeBuffer[count] = command;
-            count++;
-        }
-
-        else if ((args == 2) && (command >= 0)) {  // real command with one argument
-            codeBuffer[count++] = command;
-            codeBuffer[count++] = newElem;
-        }
-
-        else return ERR_BYTECODE;
-
-    }
-    
-    return count;
-    
 }
 
 err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode) {
