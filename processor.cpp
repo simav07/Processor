@@ -1,10 +1,21 @@
 #include "stack.h"
+#include "io.h"
+#include "commands.h"
+#include "hashcommands.h"
 
 struct VM_resource {
     stack_t stack = {};
     int * byteCode = NULL;
     size_t byteCodeLen = 0;
     size_t pc = 0;
+
+    //! REGISTER AO [0]
+    //! REGISTER AX [1]
+    //! REGISTER AB [2]
+    //! REGISTER AC [3]
+    //! REGISTER AD [4]
+
+    stackElem_t regstr[5] = {};
 };
 
 //! Flag for byte code filename

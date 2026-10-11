@@ -1,4 +1,14 @@
-#include "stack.h"
+// #include "stack.h"
+typedef int err_t;
+
+#include <stdio.h>
+#include <stdlib.h>
+
+#include "errors.h"
+#include "colors.h"
+#include "io.h"
+#include "commands.h"
+#include "hashcommands.h"
 
 struct AsmFilesInfo {
     char * readFrom = NULL;
@@ -15,7 +25,7 @@ const char * PROG_BYTECODE_FILE = "pbytecode.txt";
 //! Assembler's files for calculating hash values of commands
 
 const char * COMMANDS_SOURCE    = "comsrc.txt"; //! File with commands for assembler
-const char * HASH_COMMANDS_FILE = "commands.h"; //! Auto-generated file with enum of hash values
+const char * HASH_COMMANDS_FILE = "hashcommands.h"; //! Auto-generated file with enum of hash values
 
 //! Max command length for commands (bad)
 const int COMMAND_LEN = 10;
@@ -32,6 +42,7 @@ err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode
 
 //! Write commands to the file with byte code
 err_t WriteHashCom(const char * source, const char * commandsFile);
+size_t DjbHash(const void *data, size_t size);
 
 err_t WriteArguments(FILE * fileSource, int args, int newCommandCode, int newElem);
 err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const char * byteCodeName);
@@ -295,4 +306,20 @@ err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode
     }
 
     return ERR_INTPR;
+}
+
+size_t DjbHash(const void *data, size_t size) {
+
+    ASSERT(data);
+
+    const unsigned char *ptr = (const unsigned char *)data;
+    ASSERT(ptr);
+
+    size_t hash = 5381;
+
+    for (size_t i = 0; i < size; i++)
+        
+        hash = hash * 33 + ptr[i];
+
+    return hash;
 }

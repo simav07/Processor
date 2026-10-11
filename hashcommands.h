@@ -1,0 +1,14 @@
+// There's all hash values of all commands
+#ifndef HASH_COMMANDS
+#define HASH_COMMANDS
+
+enum HASH_COMMANDS {
+	HASH_PUSH = 6384411237,
+	HASH_ADD = 193450094,
+	HASH_SUB = 193470255,
+	HASH_DIV = 193453544,
+	HASH_OUT = 193465917,
+	HASH_HLT = 193457997,
+
+};
+#endif

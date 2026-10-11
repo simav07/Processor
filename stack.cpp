@@ -1,4 +1,5 @@
 #include "stack.h"
+#include "io.h"
 
 err_t CheckFile(FILE * file_p) {
 

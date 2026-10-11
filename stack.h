@@ -18,7 +18,7 @@ typedef double stackElem_t;
 #endif
 
 #include "colors.h"
-#include "commands.h"
+#include "errors.h"
 
 #include <stdio.h>
 #include <ctype.h>
@@ -33,75 +33,12 @@ typedef double stackElem_t;
 #include <sys/types.h>
 #include <sys/stat.h>
 
-//! All possible errors this stack working
-enum {
-    INIT_NUM = 100,     //! Starting value for protecting
-
-    ERR_OK,             //! All good
-    ERR_CTOR,           //! Getted stack was already constructed
-    ERR_NULL_STACK,     //! Getted null-pointer to stack
-    ERR_CALLOC,         //! If calloc returned NULL
-    ERR_REALLOC,        //! If realloc returned NULL
-    ERR_CAPACITY,       //! Incorrect capacity value
-    ERR_FILEOPEN,       //! fopen returned NULL
-    ERR_BAD_SIZE,       //! The size is more than capacity
-    ERR_ZERO_SIZE,      //! Stack try to return value but size is zero
-    ERR_SIGN_SIZE,      //! The size is less than zero
-    ERR_DATA_PTR,       //! Pointer to the stack if null, but stack already constructed
-    ERR_SIGN_CAPACITY,  //! The capacity is less than zero
-    ERR_FAKE_POP_PTR,   //! Stack try to return poison value
-    ERR_MEMORY_INIT,    //! Incorrect pointers for the place of new memory
-    ERR_NULL_POINTER,   //! Getted null-pointer to stack
-    ERR_DATA_BEGIN,     //! Getted null-pointer to begin of data
-    ERR_RESIZE,         //! Error by StackResize
-    ERR_UP_RESIZE,      //! Size != capacity but program try to increase stack
-    ERR_DOWN_RESIZE,    //! Size is pretty big but program try to reduce stack
-    ERR_LEFT_CANARY,    //! Left canary was not defined
-    ERR_RIGHT_CANARY,   //! Right canary was not defined
-    ERR_HASH,           //! Stack data was changed
-
-//---------------------------------------------------------
-// Errors with processor
-
-    ERR_BYTECODE,
-    ERR_COMMAND,     // False command in byte code
-    ERR_PROCESSING,
-    ERR_PUSH_COM,
-    ERR_ADD_COM,
-    ERR_DIV_COM,
-    ERR_OUT_PROCESSING,
-    ERR_ASM,
-    ERR_INTPR,
-    ERR_WRITEHASH,
-};
-
-//! Commands for virtual machine
-enum COMMANDS {
-    PUSH_C = 1,
-    ADD_C  = 2,
-    SUB_C  = 3,
-    DIV_C  = 4,
-    OUT_C  = 5,
-    HLT_C  = 6,
-};
-
 //! Commands for StackResize
 enum resizeCommand {
     
     MEM_UP   = 10, //! Increase memory
     MEM_DOWN = 20, //! Reduce memory
 
-};
-
-//! All used file information
-struct FileStat {
-    char * text_ptr = NULL;
-    char ** index = {};
-    off_t sizeInBytes = 0;
-    size_t nLines = 0;
-    unsigned int sizeOfElem = sizeof(char);
-    char * readFrom = NULL;
-    char * printTo  = NULL;
 };
 
 //! Stack and all using parameters
@@ -136,22 +73,6 @@ struct stack_t {
 //! Filename for logging
 const char LOGFILE_NAME[] = "MyLogfile.txt";
 
-#ifdef MYDEBUG
-
-#define ASSERT(right_instr) do { \
-    if (!right_instr) { \
-        fprintf(stderr, "\nAssertion failed: (%s), file <%s>, line: %d\n\n", #right_instr, __FILE__, __LINE__); \
-        printf("Current function: %s\n", __PRETTY_FUNCTION__);\
-        printf(RED "Link to the line:\n" RESET);          \
-        printf("File: " __FILE__ ":%d:1:\n\n", __LINE__); \
-        printf(RED "--------------------------------------------------" RESET); \
-        abort(); \
-    } \
-} while (0)
-#else
-#define ASSERT(right_instr) (void)0
-#endif
-
 //!-------------------------------------------------------------------------
 //! LOGGING
 //!-------------------------------------------------------------------------
@@ -167,32 +88,6 @@ const char LOGFILE_NAME[] = "MyLogfile.txt";
 
 #define WRITE_ERROR_LOG (void)0
 #endif
-
-// go to IO .cpp
-// err_t GetFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo);
-
-//! -------------------------------------------------------------------------
-//! Functions for ASSEMBLER
-//! -------------------------------------------------------------------------
-/*
-err_t Assemble(const char * asmSourceName, const char * byteCodeName);
-
-//! Fill byte code buffer from txt
-size_t ReadByteCode(const FileStat * txtFile, int * codeBuffer);
-
-size_t GetByteCode(int ** byteCode, AsmFilesInfo * fileInfo);
-
-err_t WriteHashCom(const char * source, const char * commandsFile);
-
-err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode);
-
-//! Write commands to the file with byte code
-err_t WriteArguments(FILE * fileSource, int args, int newCommandCode, int newElem);
-err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const char * byteCodeName);
-err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs, char * command,
-                                                     int * newElem, int * newCommandCode);
-
-err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile); */
 
 //! --------------------------------------------------------------------------
 //!  Functions for STACK
@@ -249,22 +144,5 @@ void STACK_LOG(FILE * logFile, const stack_t * stk, const char stkName[], const 
 
 //! Write verified by StackVerify error to the logfile
 void WriteErrorLog(FILE * file_p, const char * message, const char * fileName, const char *funcName);
-
-//! ---------------------------------------------------------
-//! Functions for IO
-//! ---------------------------------------------------------
-
-err_t ReadTxtFile(const char filename[], FileStat * fileInfo);
-
-size_t StringsParser(char * buffer, char diffElem, char ** index);
-
-void FillIndexes(FileStat * fileInfo);
-
-void PrintStrings(FILE * stream, char ** index_ptr, size_t nStrings);
-
-size_t CountElems(const char * string, int Elem);
-
-void PrintErrno(const char filename[], int err_inf);
-// --------------------------------------------------------------------
 
 #endif
