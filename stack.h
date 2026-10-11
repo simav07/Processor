@@ -133,12 +133,6 @@ struct stack_t {
     #endif
 };
 
-struct VM_resource {
-    stack_t stack = {};
-    int * byteCode = NULL;
-    size_t byteCodeLen = 0;
-};
-
 //! Filename for logging
 const char LOGFILE_NAME[] = "MyLogfile.txt";
 

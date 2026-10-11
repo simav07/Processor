@@ -1,5 +1,12 @@
 #include "stack.h"
 
+struct VM_resource {
+    stack_t stack = {};
+    int * byteCode = NULL;
+    size_t byteCodeLen = 0;
+    size_t pc = 0;
+};
+
 //! Flag for byte code filename
 const char * CMD_FLAG_BYTECODE = "--bytecode";
 
@@ -17,8 +24,6 @@ err_t PrepareByteCode(VM_resource * virtualMachine, const int argc, char * argv[
 size_t GetByteCode(int ** byteCode, const char * byteCodeFilename);
 
 size_t ReadByteCode(const FileStat * txtFile, int * codeBuffer);
-
-err_t WriteHashCom(const char * source, const char * commandsFile);
 
 err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode);
 
@@ -91,7 +96,7 @@ err_t RunVirtualMachine(VM_resource * virtualMachine) {
     ASSERT(virtualMachine);
     ASSERT(virtualMachine->byteCode);
 
-    size_t pc = 0; // in struct
+    virtualMachine->pc = 0;
 
     int ctorStat = StackCtor(&(virtualMachine->stack), 10);
     if (ctorStat != ERR_OK) return ERR_CTOR;
@@ -100,33 +105,33 @@ err_t RunVirtualMachine(VM_resource * virtualMachine) {
 
     stackElem_t outResult = 0;
 
-    while (virtualMachine->byteCode[pc] != HLT_C) {
+    while (virtualMachine->byteCode[virtualMachine->pc] != HLT_C) {
 
         StackDump(file_p, &(virtualMachine->stack));
 
-        if (pc > virtualMachine->byteCodeLen) {
+        if (virtualMachine->pc > virtualMachine->byteCodeLen) {
             printf(BOLD_RED "In asm file no HLT command\n" RESET);
             return ERR_PROCESSING;
         }
 
-        if (virtualMachine->byteCode[pc] == OUT_C) {
+        if (virtualMachine->byteCode[virtualMachine->pc] == OUT_C) {
             stackElem_t out = OutCom(&(virtualMachine->stack));
 
             if (out == ERR_COMMAND) return ERR_OUT_PROCESSING;
 
             outResult = out;
-            pc++;
+            virtualMachine->pc++;
             continue;
 
         }
 
-        int goOn = Interpreter(virtualMachine->byteCode, &(virtualMachine->stack), pc);
+        int goOn = Interpreter(virtualMachine->byteCode, &(virtualMachine->stack), virtualMachine->pc);
 
         if (goOn == ERR_COMMAND) {
             printf(RED "ERROR_PROCESSING\n" RESET);
             return ERR_PROCESSING;
         }
-        pc = pc + goOn;
+        virtualMachine->pc = virtualMachine->pc + goOn;
 
     }
     fclose(file_p);
@@ -307,46 +312,6 @@ size_t GetByteCode(int ** byteCode, const char * byteCodeFilename) {
 
     return codeBytesLen;
 
-}
-
-err_t WriteHashCom(const char * source, const char * commandsFile) {
-
-    FileStat sourceFile = {};
-
-    int readStat = ReadTxtFile(source, &sourceFile);
-    if (!readStat) {
-        printf(BOLD_RED "Error of reading file <%s>\n" RESET);
-        return ERR_FILEOPEN;
-    }
-
-    FILE * fileForWriting = fopen(commandsFile, "w");
-
-    //! Making a enum with hash values of all commands in the "commandsFile"
-
-    fprintf(fileForWriting, "// There's all hash values of all commands\n");
-    fprintf(fileForWriting, "#ifndef HASH_COMMANDS\n#define HASH_COMMANDS\n\n");
-    fprintf(fileForWriting, "enum HASH_COMMANDS {\n");
-
-    for (size_t i = 0; i < sourceFile.nLines - 1; i++) {
-
-        char * newCommand = sourceFile.index[i];
-        if (newCommand == NULL) {
-            printf("NULL-pointer to newCommand.\n");
-            return ERR_WRITEHASH;
-        }
-
-        size_t commandHash = DjbHash((const void *)newCommand, strlen(newCommand));
-
-        fprintf(fileForWriting, "\tHASH_%s = %zu,\n", newCommand, commandHash);
-
-    }
-
-    fprintf(fileForWriting, "\n};\n");
-    fprintf(fileForWriting, "#endif");
-
-    fclose(fileForWriting);
-
-    return ERR_OK;
 }
 
 size_t ReadByteCode(const FileStat * txtFile, int * codeBuffer) {
