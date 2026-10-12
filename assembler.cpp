@@ -22,10 +22,13 @@ const char * CMD_FLAG_ASM = "--asmsource";
 // const char * PROG_BYTECODE_FILE = "pbytecode.txt";
 const char * PROG_BYTECODE_FILE = "bcode.bin";
 
+/*
 //! Assembler's files for calculating hash values of commands
 
 const char * COMMANDS_SOURCE    = "comsrc.txt"; //! File with commands for assembler
 const char * HASH_COMMANDS_FILE = "hashcommands.h"; //! Auto-generated file with enum of hash values
+
+*/
 
 //! Max command length for commands (bad)
 const int COMMAND_LEN = 10;
@@ -48,10 +51,13 @@ err_t WriteArguments(FILE * fileSource, int args, int newCommandCode, int newEle
 err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const char * byteCodeName);
 err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs, char * command,
                                                      int * newElem, int * newCommandCode);
+//int CheckSecondArg(const char * arg2, size_t arg2Len);
 
 err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile);
 
 int main(const int argc, char * argv[]) {
+
+    printf("\nFile <%s>, [%s]\n", __FILE__, __TIME__);
 
     AsmFilesInfo asmInfo = {};
 
@@ -69,7 +75,7 @@ int main(const int argc, char * argv[]) {
     // if (strcmp(asmInfo.readFrom, USER_ASM_SOURCE_FILE) != 0) ASSERT(0);
 
     printf(BOLD_GREEN "Successful assembling.\n" RESET);
-    printf("File with bytecode: <%s>\n", asmInfo.writeTo);
+    printf(YELLOW "File with bytecode: <%s>\n" RESET, asmInfo.writeTo);
     
     return true;
 }
@@ -101,7 +107,7 @@ err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
     ASSERT(asmSourceName);
     ASSERT(byteCodeName);
     ASSERT((byteCodeName != asmSourceName));
-
+    /*
     //! Get hash values of using commands
     int hashStat = WriteHashCom(COMMANDS_SOURCE, HASH_COMMANDS_FILE);
     if (hashStat != ERR_OK) {
@@ -109,6 +115,7 @@ err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
         printf(RED "Error of getting hash values of commands\n" RESET);
         return ERR_ASM;
     }
+        */
 
     FileStat fAsmSource = {};
 
@@ -161,7 +168,7 @@ err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const 
 
     return ERR_OK;
 }
-
+/*
 err_t WriteHashCom(const char * source, const char * commandsFile) {
 
     FileStat sourceFile = {};
@@ -201,6 +208,7 @@ err_t WriteHashCom(const char * source, const char * commandsFile) {
 
     return ERR_OK;
 }
+    */
 
 err_t WriteArguments(FILE * fileSource, int args, int newCommandCode, int newElem) {
 
@@ -227,9 +235,9 @@ err_t WriteArguments(FILE * fileSource, int args, int newCommandCode, int newEle
 err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs, char * command,
                                                      int * newElem, int * newCommandCode) {
 
-    *nArgs = sscanf(fAsmSource->index[i], "%s %d", command, newElem);
+    *nArgs = sscanf(fAsmSource->index[i], "%s %d", command, newElem);// !!!!
     
-    int interpreterStat = GetCommandCode(command, strlen(command), newCommandCode);
+    int interpreterStat = GetCommandCode(command, strlen(command), newCommandCode); // !!!
 
     if (interpreterStat != ERR_OK) {
     
@@ -273,6 +281,7 @@ err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode
 
     case (HASH_PUSH):
         if (strcmp(command, "PUSH") != 0) return ERR_INTPR;
+        // check arg, if it is digit - PUSH_c, else - PUSH R(N)
         *commandCode = PUSH_C;
         return ERR_OK;
     
@@ -307,6 +316,24 @@ err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode
 
     return ERR_INTPR;
 }
+/*
+int CheckSecondArg(const char * arg2, size_t arg2Len) {
+
+    size_t arg2Hash = DjbHash(arg2, arg2Len);
+
+    switch (arg2Hash)
+    {
+    case (HASH_AX):
+        break;
+
+    case (HASH_BX):
+        break;
+    // enc
+    default:
+        break;
+    }
+
+} */
 
 size_t DjbHash(const void *data, size_t size) {
 

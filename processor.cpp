@@ -58,6 +58,8 @@ stackElem_t OutCom(stack_t * stack);
 
 int main(const int argc, char * argv[]) {
 
+    printf("\nFile <%s>, [%s]\n", __FILE__, __TIME__);
+
     VM_resource virtualMachine = {};
     
     err_t preparingStat = PrepareByteCode(&virtualMachine, argc, argv);
