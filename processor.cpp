@@ -39,8 +39,6 @@ size_t GetByteCode(int ** byteCode, const char * byteCodeFilename);
 
 size_t ReadByteCode(const FileStat * txtFile, int * codeBuffer);
 
-err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode);
-
 //! Interpreter: run commands
 err_t Interpreter(int * byteCode, stack_t * stack, int commandCode);
 
@@ -385,48 +383,6 @@ size_t ReadByteCode(const FileStat * txtFile, int * codeBuffer) {
     
     return count;
     
-}
-err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode) {
-
-    size_t hashCommand = DjbHash((const void *)command, commandSize);
-
-    switch(hashCommand) {
-
-    case (HASH_PUSH):
-        if (strcmp(command, "PUSH") != 0) return ERR_INTPR;
-        *commandCode = PUSH_C;
-        return ERR_OK;
-    
-    case (HASH_ADD):
-        if (strcmp(command, "ADD") != 0) return ERR_INTPR;
-        *commandCode = ADD_C;
-        return ERR_OK;
-
-    case (HASH_SUB):
-        if (strcmp(command, "SUB") != 0) return ERR_INTPR;
-        *commandCode = SUB_C;
-        return ERR_OK;
-
-    case (HASH_DIV):
-        if (strcmp(command, "DIV") != 0) return ERR_INTPR;
-        *commandCode = DIV_C;
-        return ERR_OK;
-
-    case (HASH_OUT):
-        if (strcmp(command, "OUT") != 0) return ERR_INTPR;
-        *commandCode = OUT_C;
-        return ERR_OK;
-    
-    case (HASH_HLT):
-        if (strcmp(command, "HLT") != 0) return ERR_INTPR;
-        *commandCode = HLT_C;
-        return ERR_OK;
-
-    default:
-        return ERR_INTPR;
-    }
-
-    return ERR_INTPR;
 }
 
 // IO functions ----------------------------------------------------

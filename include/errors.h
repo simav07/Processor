@@ -41,6 +41,7 @@ enum {
     ERR_ASM,
     ERR_INTPR,
     ERR_WRITEHASH,
+    ERR_OVERFLOW,
 };
 
 #endif
