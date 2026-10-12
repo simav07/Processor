@@ -2,6 +2,9 @@ typedef int err_t;
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctype.h>
+#include <math.h>
+#include <limits.h>
 
 #include "./include/errors.h"
 #include "./include/colors.h"
@@ -25,6 +28,8 @@ const char * PROG_BYTECODE_FILE = "bcode.bin";
 //! Max command length for commands (bad)
 const int MAX_COMMAND_LEN = 20;
 
+const int POISON_VALUE = INT32_MAX;
+
 //! -------------------------------------------------------------------------
 //! Functions for ASSEMBLER
 //! -------------------------------------------------------------------------
@@ -33,7 +38,9 @@ err_t GetAsmFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo);
 
 err_t Assemble(const char * asmSourceName, const char * byteCodeName);
 
-err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode);
+err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode, 
+                                           const char * arg, size_t argSize, int * newValue);
+int GetRegCode(const char * arg2, size_t arg2Len);
 
 //! Write commands to the file with byte code
 err_t WriteHashCom(const char * source, const char * commandsFile);
@@ -41,7 +48,7 @@ size_t DjbHash(const void *data, size_t size);
 
 err_t WriteArguments(FILE * fileSource, int args, int newCommandCode, int newElem);
 err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const char * byteCodeName);
-err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs, char * command,
+err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs,
                                                      int * newElem, int * newCommandCode);
 //int CheckSecondArg(const char * arg2, size_t arg2Len);
 
@@ -113,13 +120,13 @@ err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
 
     for (size_t i = 0; i < fAsmSource.nLines; i++) {
 
-        char command[MAX_COMMAND_LEN] = "";
+        char command[MAX_COMMAND_LEN] = ""; // add protect
         int newElem = 0;
         int nArgs = 0;
 
         int newCommandCode = 0;
 
-        err_t getArgStat = GetCodeArguments(&fAsmSource, i, &nArgs, command, &newElem, &newCommandCode);
+        err_t getArgStat = GetCodeArguments(&fAsmSource, i, &nArgs, &newElem, &newCommandCode);
         if (getArgStat != ERR_OK) {
             printf("Error of getting args\n");
             return ERR_INTPR;
@@ -156,7 +163,7 @@ err_t WriteArguments(FILE * fileSource, int args, int newCommandCode, int newEle
 
     ASSERT(fileSource);
 
-    if (args == 1) {  // real command without argument
+    if ((args == 1) || (args == 2 && newElem == POISON_VALUE)) {  // real command without argument
 
         fprintf(fileSource, "%d\n", newCommandCode);
         return ERR_OK;
@@ -174,7 +181,7 @@ err_t WriteArguments(FILE * fileSource, int args, int newCommandCode, int newEle
 
 }
 
-err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs, char * command,
+err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs,
                                                      int * newElem, int * newCommandCode) {
 
     // buffer overflow protect
@@ -183,9 +190,12 @@ err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs, char * command
     char arg1[MAX_COMMAND_LEN] = "";
     char arg2[MAX_COMMAND_LEN] = "";
 
-    *nArgs = sscanf(fAsmSource->index[i].index, "%s %d", command, newElem);// !!!!
-    
-    int interpreterStat = GetCommandCode(command, strlen(command), newCommandCode); // !!!
+    *nArgs = sscanf(fAsmSource->index[i].index, "%s %s", arg1, arg2);
+
+    if (*nArgs != 1 && *nArgs != 2) return ERR_COMMAND;
+
+    err_t interpreterStat = GetCommandCode(arg1, strlen(arg1),
+                            newCommandCode, arg2, strlen(arg2), newElem);
 
     if (interpreterStat != ERR_OK) {
     
@@ -196,6 +206,34 @@ err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs, char * command
     }
 
     return ERR_OK;
+
+}
+
+int GetRegCode(const char * arg2, size_t arg2Len) {
+
+    size_t hashReg = DjbHash(arg2, arg2Len);
+
+    switch (hashReg)
+    {
+    case (HASH_OX):
+        return 0;
+
+    case (HASH_AX):
+        return 1;
+
+    case (HASH_BX):
+        return 2;
+
+    case (HASH_CX):
+        return 3;
+
+    case (HASH_DX):
+        return 4;
+    
+    default:
+        return ERR_REGISTER;
+        break;
+    }
 
 }
 
@@ -221,23 +259,57 @@ err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFil
 
 }
 
-err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode) {
+err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode, 
+                                           const char * arg, size_t argSize, int * newValue) {
 
     size_t hashCommand = DjbHash((const void *)command, commandSize);
 
     switch(hashCommand) {
 
-    case (HASH_PUSH):
+    case (HASH_PUSH): {
         if (strcmp(command, "PUSH") != 0) return ERR_INTPR;
-        // check arg, if it is digit - PUSH_c, else - PUSH R(N)
-        *commandCode = PUSH_C;
+        
+        if (!isalpha(arg[0])) {
+            *commandCode = PUSH_C;
+            char * checkPtr;
+            *newValue = strtod(arg, &checkPtr);
+            if (arg == checkPtr) {
+                printf("Error of reading a number\n");
+                return ERR_COMMAND;
+            }
+            return ERR_OK;
+        }
+
+        int getRegCodeStat = GetRegCode(arg, argSize);
+
+        *commandCode = PUSH_R;
+        
+        if (getRegCodeStat == ERR_REGISTER) return ERR_REGISTER;
+
+        *newValue = getRegCodeStat; // write a number of register to new Value
+
         return ERR_OK;
+    }
+
+    case (HASH_POP): {
+        if (strcmp(command, "POP") != 0) return ERR_INTPR;
+
+        int getRegCodeStat = GetRegCode(arg, argSize);
+
+        *commandCode = POP_R;
+        
+        if (getRegCodeStat == ERR_REGISTER) return ERR_REGISTER;
+
+        *newValue = getRegCodeStat; // write a number of register to new Value
+
+        return ERR_OK;
+    }
     
-    case (HASH_ADD):
+    case (HASH_ADD): {
         if (strcmp(command, "ADD") != 0) return ERR_INTPR;
         *commandCode = ADD_C;
         return ERR_OK;
-
+    }
     case (HASH_SUB):
         if (strcmp(command, "SUB") != 0) return ERR_INTPR;
         *commandCode = SUB_C;
@@ -269,24 +341,6 @@ err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode
 
     return ERR_INTPR;
 }
-/*
-int CheckSecondArg(const char * arg2, size_t arg2Len) {
-
-    size_t arg2Hash = DjbHash(arg2, arg2Len);
-
-    switch (arg2Hash)
-    {
-    case (HASH_AX):
-        break;
-
-    case (HASH_BX):
-        break;
-    // enc
-    default:
-        break;
-    }
-
-} */
 
 size_t DjbHash(const void *data, size_t size) {
 

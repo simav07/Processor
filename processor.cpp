@@ -40,12 +40,15 @@ size_t GetByteCode(int ** byteCode, const char * byteCodeFilename);
 size_t ReadByteCode(const FileStat * txtFile, int * codeBuffer);
 
 //! Interpreter: run commands
-err_t Interpreter(int * byteCode, stack_t * stack, int commandCode);
+err_t Interpreter(VM_resource * virtualMachine, int index);
 
 //! Commands for virtual machine -------------------------------------
 err_t PushCom(int * byteCode, stack_t * stack, int index);
 
 err_t GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b);
+
+err_t PopR(VM_resource * virtualMachine); // pushRegister
+err_t PushR(VM_resource * virtualMachine, int nRegister);
 
 err_t AddCom(stack_t * stack);
 err_t SubCom(stack_t * stack);
@@ -76,6 +79,7 @@ int main(const int argc, char * argv[]) {
         printf("ERROR OF VIRTUAL MACHINE\n");
         return false;
     }
+    printf("Register 1: " STACK_ELEM_FORMAT "\n", virtualMachine.regstr[R1]);
 
     return true;
 }
@@ -140,7 +144,7 @@ err_t RunVirtualMachine(VM_resource * virtualMachine) {
 
         }
 
-        int goOn = Interpreter(virtualMachine->byteCode, &(virtualMachine->stack), virtualMachine->pc);
+        int goOn = Interpreter(virtualMachine, virtualMachine->pc);
 
         if (goOn == ERR_COMMAND) {
             printf(RED "ERROR_PROCESSING\n" RESET);
@@ -156,36 +160,41 @@ err_t RunVirtualMachine(VM_resource * virtualMachine) {
     return ERR_OK;
 }
 
-err_t Interpreter(int * byteCode, stack_t * stack, int index) {
+err_t Interpreter(VM_resource * virtualMachine, int index) {
 
-    ASSERT(stack);
-    ASSERT(byteCode);
+    ASSERT(virtualMachine);
 
-    switch (byteCode[index])
+    switch (virtualMachine->byteCode[index])
     {
     // PUSH
     case (PUSH_C):
-        return PushCom(byteCode, stack, index);
+        return PushCom(virtualMachine->byteCode, &(virtualMachine->stack), index);
+
+    case (POP_R):
+        return PopR(virtualMachine);
+
+    case (PUSH_R):
+        return PushR(virtualMachine, virtualMachine->byteCode[index + 1]);
     
     // ADD (+)
     case (ADD_C):
-        return AddCom(stack);
+        return AddCom(&(virtualMachine->stack));
 
     // SUB (-)
     case (SUB_C):
-        return SubCom(stack);
+        return SubCom(&(virtualMachine->stack));
 
     // DIV (/)
     case (DIV_C):
-        return DivCom(stack);
+        return DivCom(&(virtualMachine->stack));
 
     // MUL (*)
     case (MUL_C):
-        return MulCom(stack);
+        return MulCom(&(virtualMachine->stack));
 
     // OUT
     case (OUT_C):
-        return OutCom(stack);
+        return OutCom(&(virtualMachine->stack));
 
     case (HLT_C):
         return 0;
@@ -211,6 +220,34 @@ err_t PushCom(int * byteCode, stack_t * stack, int index) {
 
     return 2;
 
+}
+
+err_t PopR(VM_resource * virtualMachine) {
+
+    // ASSERT(virtualMachine);
+    // ASSERT(virtualMachine->byteCode);
+    // ASSERT(virtualMachine->regstr);
+    // ASSERT(virtualMachine->stack);
+
+    err_t popStat = 0;
+    stackElem_t var = StackPop(&(virtualMachine->stack), &popStat);
+
+    if (popStat != ERR_OK) return ERR_COMMAND;
+
+    virtualMachine->regstr[virtualMachine->byteCode[virtualMachine->pc + 1]] = var;
+
+    return 2;
+}
+
+err_t PushR(VM_resource * virtualMachine, int nRegister) {
+
+    ASSERT(virtualMachine);
+
+    err_t pushStat = StackPush(&(virtualMachine->stack), virtualMachine->regstr[nRegister]);
+
+    if (pushStat != ERR_OK) return ERR_PUSH_COM;
+
+    return 2;
 }
 
 // Get 2 last elems from stack

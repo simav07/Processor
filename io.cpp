@@ -84,10 +84,7 @@ size_t StringsParser(char * buffer, char diffElem, StringInfo * index) {
         char * lineEnd = currPtr;
 
         // Windows: remove '\r' from CRLF.
-        if (!isEnd &&
-            diffElem == '\n' &&
-            lineEnd > lineStart &&
-            *(lineEnd - 1) == '\r') {
+        if (!isEnd && diffElem == '\n' && lineEnd > lineStart && *(lineEnd - 1) == '\r') {
             lineEnd--;
         }
 
