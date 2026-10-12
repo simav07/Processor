@@ -13,14 +13,6 @@ struct VM_resource {
     stackElem_t regstr[5] = {};
 };
 
-enum registers {
-    R0 = 0,    //! REGISTER OX [0]
-    R1 = 1,    //! REGISTER AX [1]
-    R2 = 2,    //! REGISTER BX [2]
-    R3 = 3,    //! REGISTER CX [3]
-    R4 = 4,    //! REGISTER DX [4]
-};
-
 //! Flag for byte code filename
 const char * CMD_FLAG_BYTECODE = "--bytecode";
 
@@ -79,7 +71,6 @@ int main(const int argc, char * argv[]) {
         printf("ERROR OF VIRTUAL MACHINE\n");
         return false;
     }
-    printf("Register 1: " STACK_ELEM_FORMAT "\n", virtualMachine.regstr[R1]);
 
     return true;
 }

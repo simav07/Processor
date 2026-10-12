@@ -7,8 +7,11 @@ enum COMMANDS {
     ADD_C  = 2,
     SUB_C  = 3,
     DIV_C  = 4,
-    OUT_C  = 5,
-    HLT_C  = 6,
+    MUL_C  = 5,
+    PUSH_R,
+    POP_R,
+    OUT_C,
+    HLT_C,
 };
 
 #endif
