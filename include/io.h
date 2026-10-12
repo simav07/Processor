@@ -9,10 +9,15 @@ typedef int err_t;
 #include <sys/types.h>
 #include <sys/stat.h>
 
+struct StringInfo {
+    char * index;
+    size_t length;
+};
+
 //! All used file information
 struct FileStat {
     char * text_ptr = NULL;
-    char ** index = {};
+    StringInfo * index;
     off_t sizeInBytes = 0;
     size_t nLines = 0;
     unsigned int sizeOfElem = sizeof(char);
@@ -42,11 +47,11 @@ struct FileStat {
 
 err_t ReadTxtFile(const char filename[], const char mode[], FileStat * fileInfo);
 
-size_t StringsParser(char * buffer, char diffElem, char ** index);
+size_t StringsParser(char * buffer, char diffElem, StringInfo * lines);
 
 void FillIndexes(FileStat * fileInfo);
 
-void PrintStrings(FILE * stream, char ** index_ptr, size_t nStrings);
+void PrintStrings(FILE * stream, const StringInfo * lines, size_t nStrings);
 
 size_t CountElems(const char * string, int Elem);
 

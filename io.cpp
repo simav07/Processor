@@ -10,7 +10,7 @@ err_t ReadTxtFile(const char filename[], const char mode[], FileStat * fileInfo)
 
     struct _stat fileStat = {};
 
-    //Accept "br" too, normalizing it to the standard spelling "rb".
+    // Accept "br" too, normalizing it to the standard spelling "rb".
     const char * openMode = mode;
     if (strcmp(mode, "br") == 0) {
         openMode = "rb";
@@ -61,8 +61,7 @@ err_t ReadTxtFile(const char filename[], const char mode[], FileStat * fileInfo)
 
 
 //! Splits the file's strings from fileInfo.text_ptr at a specified char - "diffElem"
-
-size_t StringsParser(char * buffer, char diffElem, char ** index) {
+size_t StringsParser(char * buffer, char diffElem, StringInfo * index) {
 
     ASSERT(buffer);
     ASSERT(index);
@@ -70,30 +69,42 @@ size_t StringsParser(char * buffer, char diffElem, char ** index) {
     size_t indexPtr = 0;
     char * lineStart = buffer;
 
-    index[indexPtr++] = buffer;
+    if (*buffer == '\0') {
+        return 0;
+    }
 
-    for (char * currPtr = buffer; *currPtr != '\0'; currPtr++) {
+    for (char * currPtr = buffer; ; currPtr++) {
+        // Save this before modifying the current character.
+        bool isEnd = (*currPtr == '\0');
 
-        if (*currPtr != diffElem) {
+        if (!isEnd && *currPtr != diffElem) {
             continue;
         }
 
-        // Windows: remove '\r' from CRLF.
-        if (diffElem == '\n' &&
-            currPtr > lineStart &&
-            *(currPtr - 1) == '\r') {
+        char * lineEnd = currPtr;
 
-            *(currPtr - 1) = '\0';
-        } else {
-            *currPtr = '\0';
+        // Windows: remove '\r' from CRLF.
+        if (!isEnd &&
+            diffElem == '\n' &&
+            lineEnd > lineStart &&
+            *(lineEnd - 1) == '\r') {
+            lineEnd--;
+        }
+
+        index[indexPtr].index = lineStart;
+        index[indexPtr].length = (size_t)(lineEnd - lineStart);
+
+        *lineEnd = '\0';
+        indexPtr++;
+
+        if (isEnd) {
+            break;
         }
 
         lineStart = currPtr + 1;
 
         // Do not create an extra line after a trailing '\n'.
-        if (*lineStart != '\0') {
-            index[indexPtr++] = lineStart;
-        } else {
+        if (*lineStart == '\0') {
             break;
         }
     }
@@ -102,17 +113,15 @@ size_t StringsParser(char * buffer, char diffElem, char ** index) {
 }
 
 
-
-
 void FillIndexes(FileStat * fileInfo) {
 
     ASSERT(fileInfo);
     ASSERT(fileInfo->text_ptr);
 
-    // Allocate enough pointers for every possible line.
-    fileInfo->nLines = CountElems(fileInfo->text_ptr, '\n') + 1;
+    // Count lines before splitting the buffer.
+    fileInfo->nLines = CountElems(fileInfo->text_ptr, '\n');
 
-    fileInfo->index = (char **)calloc(fileInfo->nLines, sizeof(char *));
+    fileInfo->index = (StringInfo *)calloc(fileInfo->nLines, sizeof(StringInfo));
 
     ASSERT(fileInfo->index);
 
@@ -120,13 +129,12 @@ void FillIndexes(FileStat * fileInfo) {
 }
 
 
-
 size_t CountElems(const char * string, int Elem) {
 
     ASSERT(string);
 
     if (*string == '\0') {
-        return 1;
+        return 0;
     }
 
     size_t count = 0;
@@ -137,7 +145,7 @@ size_t CountElems(const char * string, int Elem) {
         curr++;
     }
 
-    if (curr > string && *(curr - 1) != Elem) {
+    if (*(curr - 1) != Elem) {
         count++;
     }
 
@@ -158,14 +166,13 @@ void PrintErrno(const char filename[], int err_inf) {
 }
 
 
-void PrintStrings(FILE * stream, char ** index_ptr, size_t nStrings) {
+void PrintStrings(FILE * stream, const StringInfo * index_ptr, size_t nStrings) {
 
     ASSERT(index_ptr);
-    ASSERT(*index_ptr);
 
     for (size_t count = 0; count < nStrings; count++) {
 
-        ASSERT(index_ptr[count]);
-        fprintf(stream, "%s\n", index_ptr[count]);
+        ASSERT(index_ptr[count].index);
+        fprintf(stream, "%.*s\n", (int)index_ptr[count].length, index_ptr[count].index);
     }
 }

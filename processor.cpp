@@ -362,7 +362,7 @@ size_t ReadByteCode(const FileStat * txtFile, int * codeBuffer) {
         int command = -1; // -1 using only for init, there's no real commands with code that equals -1
         int newElem = 0;
 
-        int args = sscanf(txtFile->index[i], "%d %d", &command, &newElem);
+        int args = sscanf(txtFile->index[i].index, "%d %d", &command, &newElem);
 
         if (args == EOF || args == 0) {
             // if theres an empty string

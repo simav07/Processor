@@ -23,7 +23,7 @@ const char * CMD_FLAG_ASM = "--asmsource";
 const char * PROG_BYTECODE_FILE = "bcode.bin";
 
 //! Max command length for commands (bad)
-const int COMMAND_LEN = 10;
+const int COMMAND_LEN = 15;
 
 //! -------------------------------------------------------------------------
 //! Functions for ASSEMBLER
@@ -177,7 +177,10 @@ err_t WriteArguments(FILE * fileSource, int args, int newCommandCode, int newEle
 err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs, char * command,
                                                      int * newElem, int * newCommandCode) {
 
-    *nArgs = sscanf(fAsmSource->index[i], "%s %d", command, newElem);// !!!!
+    char arg1[COMMAND_LEN] = "";
+    char arg2[COMMAND_LEN] = "";
+
+    *nArgs = sscanf(fAsmSource->index[i].index, "%s %d", command, newElem);// !!!!
     
     int interpreterStat = GetCommandCode(command, strlen(command), newCommandCode); // !!!
 

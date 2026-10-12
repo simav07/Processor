@@ -16,6 +16,7 @@ int main() {
 
     //! Get hash values of using commands
     int hashStat = WriteHashCom(COMMANDS_SOURCE, HASH_COMMANDS_FILE);
+    
     if (hashStat != ERR_OK) {
         // error description
         printf(RED "Error of getting hash values of commands\n" RESET);
@@ -47,7 +48,7 @@ err_t WriteHashCom(const char * source, const char * commandsFile) {
 
     for (size_t i = 0; i < sourceFile.nLines; i++) {
 
-        char * newCommand = sourceFile.index[i];
+        char * newCommand = sourceFile.index[i].index;
         if (newCommand == NULL) {
             printf("NULL-pointer to newCommand.\n");
             return ERR_WRITEHASH;
