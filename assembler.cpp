@@ -1,13 +1,12 @@
-// #include "stack.h"
 typedef int err_t;
 
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "errors.h"
-#include "colors.h"
-#include "io.h"
-#include "commands.h"
+#include "./include/errors.h"
+#include "./include/colors.h"
+#include "./include/io.h"
+#include "./include/commands.h"
 #include "hashcommands.h"
 
 struct AsmFilesInfo {
@@ -20,7 +19,8 @@ struct AsmFilesInfo {
 const char * CMD_FLAG_ASM = "--asmsource";
 
 //! Default filename for writing a byte code 
-const char * PROG_BYTECODE_FILE = "pbytecode.txt";
+// const char * PROG_BYTECODE_FILE = "pbytecode.txt";
+const char * PROG_BYTECODE_FILE = "bcode.bin";
 
 //! Assembler's files for calculating hash values of commands
 
@@ -121,7 +121,7 @@ err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
     
     FILE * byteCodeFile  = fopen(byteCodeName, "w");
 
-    for (size_t i = 0; i < fAsmSource.nLines - 1; i++) {
+    for (size_t i = 0; i < fAsmSource.nLines; i++) {
 
         char command[COMMAND_LEN] = "";
         int newElem = 0;
@@ -166,7 +166,7 @@ err_t WriteHashCom(const char * source, const char * commandsFile) {
 
     FileStat sourceFile = {};
 
-    int readStat = ReadTxtFile(source, &sourceFile);
+    int readStat = ReadTxtFile(source, "r", &sourceFile);
     if (!readStat) {
         printf(BOLD_RED "Error of reading file <%s>\n" RESET);
         return ERR_FILEOPEN;
@@ -180,7 +180,7 @@ err_t WriteHashCom(const char * source, const char * commandsFile) {
     fprintf(fileForWriting, "#ifndef HASH_COMMANDS\n#define HASH_COMMANDS\n\n");
     fprintf(fileForWriting, "enum HASH_COMMANDS {\n");
 
-    for (size_t i = 0; i < sourceFile.nLines - 1; i++) {
+    for (size_t i = 0; i < sourceFile.nLines; i++) {
 
         char * newCommand = sourceFile.index[i];
         if (newCommand == NULL) {
@@ -250,7 +250,7 @@ err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFil
 
     txtFile->readFrom = (char *)fileName;
 
-    if (!ReadTxtFile(fileName, txtFile)) ASSERT(0);
+    if (!ReadTxtFile(fileName, "r", txtFile)) ASSERT(0);
 
     int * newBuffer = (int *)calloc(txtFile->nLines * 2, sizeof(int));
 

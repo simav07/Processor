@@ -1,6 +1,6 @@
-#include "stack.h"
-#include "io.h"
-#include "commands.h"
+#include "include/stack.h"
+#include "include/io.h"
+#include "include/commands.h"
 #include "hashcommands.h"
 
 struct VM_resource {
@@ -9,13 +9,16 @@ struct VM_resource {
     size_t byteCodeLen = 0;
     size_t pc = 0;
 
-    //! REGISTER AO [0]
-    //! REGISTER AX [1]
-    //! REGISTER AB [2]
-    //! REGISTER AC [3]
-    //! REGISTER AD [4]
-
+    //! Registers
     stackElem_t regstr[5] = {};
+};
+
+enum registers {
+    R0 = 0,    //! REGISTER OX [0]
+    R1 = 1,    //! REGISTER AX [1]
+    R2 = 2,    //! REGISTER BX [2]
+    R3 = 3,    //! REGISTER CX [3]
+    R4 = 4,    //! REGISTER DX [4]
 };
 
 //! Flag for byte code filename
@@ -295,7 +298,7 @@ size_t GetByteCode(int ** byteCode, const char * byteCodeFilename) {
     FileStat txtFile = {};
 
     //if (!GetAsmFilenameStd(argc, argv, &txtFile)) ASSERT(0);
-    if (!ReadTxtFile(byteCodeFilename, &txtFile)) ASSERT(0);
+    if (!ReadTxtFile(byteCodeFilename, "rb", &txtFile)) ASSERT(0);
 
     int * newBuffer = (int *)calloc(txtFile.nLines * 2, sizeof(int));
 

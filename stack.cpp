@@ -1,5 +1,5 @@
-#include "stack.h"
-#include "io.h"
+#include "./include/stack.h"
+#include "./include/io.h"
 
 err_t CheckFile(FILE * file_p) {
 
