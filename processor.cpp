@@ -52,6 +52,7 @@ err_t GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b);
 err_t AddCom(stack_t * stack);
 err_t SubCom(stack_t * stack);
 err_t DivCom(stack_t * stack);
+err_t MulCom(stack_t * stack);
 
 stackElem_t OutCom(stack_t * stack);
 // -------------------------------------------------------------------
@@ -180,6 +181,10 @@ err_t Interpreter(int * byteCode, stack_t * stack, int index) {
     case (DIV_C):
         return DivCom(stack);
 
+    // MUL (*)
+    case (MUL_C):
+        return MulCom(stack);
+
     // OUT
     case (OUT_C):
         return OutCom(stack);
@@ -272,6 +277,20 @@ err_t DivCom(stack_t * stack) {
     if (GetTwoPop(stack, &a, &b) != ERR_OK) return ERR_COMMAND;
 
     int pushStat = StackPush(stack, (stackElem_t)((double)b / (double)a));
+
+    if (pushStat != ERR_OK) return ERR_COMMAND;
+
+    return 1;
+
+}
+
+err_t MulCom(stack_t * stack) {
+
+    stackElem_t a = 0, b = 0;
+
+    if (GetTwoPop(stack, &a, &b) != ERR_OK) return ERR_COMMAND;
+
+    int pushStat = StackPush(stack, (stackElem_t)(b * a));
 
     if (pushStat != ERR_OK) return ERR_COMMAND;
 

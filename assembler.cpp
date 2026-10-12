@@ -22,14 +22,6 @@ const char * CMD_FLAG_ASM = "--asmsource";
 // const char * PROG_BYTECODE_FILE = "pbytecode.txt";
 const char * PROG_BYTECODE_FILE = "bcode.bin";
 
-/*
-//! Assembler's files for calculating hash values of commands
-
-const char * COMMANDS_SOURCE    = "comsrc.txt"; //! File with commands for assembler
-const char * HASH_COMMANDS_FILE = "hashcommands.h"; //! Auto-generated file with enum of hash values
-
-*/
-
 //! Max command length for commands (bad)
 const int COMMAND_LEN = 10;
 
@@ -107,15 +99,6 @@ err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
     ASSERT(asmSourceName);
     ASSERT(byteCodeName);
     ASSERT((byteCodeName != asmSourceName));
-    /*
-    //! Get hash values of using commands
-    int hashStat = WriteHashCom(COMMANDS_SOURCE, HASH_COMMANDS_FILE);
-    if (hashStat != ERR_OK) {
-        // error description
-        printf(RED "Error of getting hash values of commands\n" RESET);
-        return ERR_ASM;
-    }
-        */
 
     FileStat fAsmSource = {};
 
@@ -168,47 +151,6 @@ err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const 
 
     return ERR_OK;
 }
-/*
-err_t WriteHashCom(const char * source, const char * commandsFile) {
-
-    FileStat sourceFile = {};
-
-    int readStat = ReadTxtFile(source, "r", &sourceFile);
-    if (!readStat) {
-        printf(BOLD_RED "Error of reading file <%s>\n" RESET);
-        return ERR_FILEOPEN;
-    }
-
-    FILE * fileForWriting = fopen(commandsFile, "w");
-
-    //! Making a enum with hash values of all commands in the "commandsFile"
-
-    fprintf(fileForWriting, "// There's all hash values of all commands\n");
-    fprintf(fileForWriting, "#ifndef HASH_COMMANDS\n#define HASH_COMMANDS\n\n");
-    fprintf(fileForWriting, "enum HASH_COMMANDS {\n");
-
-    for (size_t i = 0; i < sourceFile.nLines; i++) {
-
-        char * newCommand = sourceFile.index[i];
-        if (newCommand == NULL) {
-            printf("NULL-pointer to newCommand.\n");
-            return ERR_WRITEHASH;
-        }
-
-        size_t commandHash = DjbHash((const void *)newCommand, strlen(newCommand));
-
-        fprintf(fileForWriting, "\tHASH_%s = %zu,\n", newCommand, commandHash);
-
-    }
-
-    fprintf(fileForWriting, "\n};\n");
-    fprintf(fileForWriting, "#endif");
-
-    fclose(fileForWriting);
-
-    return ERR_OK;
-}
-    */
 
 err_t WriteArguments(FILE * fileSource, int args, int newCommandCode, int newElem) {
 
@@ -308,6 +250,11 @@ err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode
     case (HASH_HLT):
         if (strcmp(command, "HLT") != 0) return ERR_INTPR;
         *commandCode = HLT_C;
+        return ERR_OK;
+
+    case (HASH_MUL):
+        if (strcmp(command, "MUL") != 0) return ERR_INTPR;
+        *commandCode = MUL_C;
         return ERR_OK;
 
     default:
