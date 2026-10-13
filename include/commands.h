@@ -10,6 +10,8 @@ enum COMMANDS {
     MUL_C  = 5,
     PUSH_R,
     POP_R,
+    SKIP_STEP,
+    JUMP_C,
     OUT_C,
     HLT_C,
 };

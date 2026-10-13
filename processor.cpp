@@ -42,6 +42,8 @@ err_t GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b);
 err_t PopR(VM_resource * virtualMachine); // pushRegister
 err_t PushR(VM_resource * virtualMachine, int nRegister);
 
+err_t Jump(VM_resource * virtualMachine, int index);
+
 err_t AddCom(stack_t * stack);
 err_t SubCom(stack_t * stack);
 err_t DivCom(stack_t * stack);
@@ -166,6 +168,9 @@ err_t Interpreter(VM_resource * virtualMachine, int index) {
 
     case (PUSH_R):
         return PushR(virtualMachine, virtualMachine->byteCode[index + 1]);
+
+    case (JUMP_C):
+        return Jump(virtualMachine, index);
     
     // ADD (+)
     case (ADD_C):
@@ -239,6 +244,16 @@ err_t PushR(VM_resource * virtualMachine, int nRegister) {
     if (pushStat != ERR_OK) return ERR_PUSH_COM;
 
     return 2;
+}
+
+err_t Jump(VM_resource * virtualMachine, int index) {
+
+    int jumpIndex = virtualMachine->byteCode[index + 1];
+
+    virtualMachine->pc = jumpIndex;
+
+    return 2;
+
 }
 
 // Get 2 last elems from stack

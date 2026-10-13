@@ -44,6 +44,8 @@ enum {
     ERR_OVERFLOW,
     ERR_ARG,
     ERR_REGISTER,
+    ERR_MARK,
+    ERR_SYNTAX,
 };
 
 #endif

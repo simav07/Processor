@@ -5,6 +5,7 @@ typedef int err_t;
 #include <ctype.h>
 #include <math.h>
 #include <limits.h>
+#include <stdint.h>
 
 #include "./include/errors.h"
 #include "./include/colors.h"
@@ -15,6 +16,11 @@ typedef int err_t;
 struct AsmFilesInfo {
     char * readFrom = NULL;
     char * writeTo  = NULL;
+};
+
+struct Marks {
+    int Label[20] = {0};
+    size_t nMark  = 0;
 };
 
 
@@ -38,18 +44,21 @@ err_t GetAsmFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo);
 
 err_t Assemble(const char * asmSourceName, const char * byteCodeName);
 
-err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode, 
+err_t GetCommandCode(Marks * label, const char * command, size_t commandSize, uint8_t * commandCode, 
                                            const char * arg, size_t argSize, int * newValue);
 int GetRegCode(const char * arg2, size_t arg2Len);
+
+err_t MakeMark(Marks * label, const char * arg1, const size_t currIndex);
+err_t WriteMarkIndex(Marks * label, const char * arg2, int * newValue);
 
 //! Write commands to the file with byte code
 err_t WriteHashCom(const char * source, const char * commandsFile);
 size_t DjbHash(const void *data, size_t size);
 
-err_t WriteArguments(FILE * fileSource, int args, int newCommandCode, int newElem);
+err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, int newElem);
 err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const char * byteCodeName);
 err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs,
-                                                     int * newElem, int * newCommandCode);
+                                                     int * newElem, uint8_t * newCommandCode, Marks * label);
 //int CheckSecondArg(const char * arg2, size_t arg2Len);
 
 err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile);
@@ -109,6 +118,8 @@ err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
 
     FileStat fAsmSource = {};
 
+    Marks Label = {};
+
     err_t prepareAsmStat = PrepareAsmSource(&fAsmSource, asmSourceName, byteCodeName);
     if (prepareAsmStat != ERR_OK) {
         printf("Error of reading asm source\n");
@@ -120,13 +131,14 @@ err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
 
     for (size_t i = 0; i < fAsmSource.nLines; i++) {
 
-        char command[MAX_COMMAND_LEN] = ""; // add protect
+        if (fAsmSource.index->length > MAX_COMMAND_LEN) return ERR_OVERFLOW; //! overflow protect
+        char command[MAX_COMMAND_LEN] = "";
         int newElem = 0;
         int nArgs = 0;
 
-        int newCommandCode = 0;
+        uint8_t newCommandCode = 0;
 
-        err_t getArgStat = GetCodeArguments(&fAsmSource, i, &nArgs, &newElem, &newCommandCode);
+        err_t getArgStat = GetCodeArguments(&fAsmSource, i, &nArgs, &newElem, &newCommandCode, &Label);
         if (getArgStat != ERR_OK) {
             printf("Error of getting args\n");
             return ERR_INTPR;
@@ -140,6 +152,12 @@ err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
 
     }
     fclose(byteCodeFile);
+
+    printf("\nLABEL WITH MARKS: \n");
+    for (size_t i = 0; i <= Label.nMark; i++) {
+        printf("[%d] ", Label.Label[i]);
+    }
+    printf("\n");
 
     return ERR_OK;
 }
@@ -159,9 +177,11 @@ err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const 
     return ERR_OK;
 }
 
-err_t WriteArguments(FILE * fileSource, int args, int newCommandCode, int newElem) {
+err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, int newElem) {
 
     ASSERT(fileSource);
+
+    if (newCommandCode == SKIP_STEP) return ERR_OK;
 
     if ((args == 1) || (args == 2 && newElem == POISON_VALUE)) {  // real command without argument
 
@@ -182,7 +202,7 @@ err_t WriteArguments(FILE * fileSource, int args, int newCommandCode, int newEle
 }
 
 err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs,
-                                                     int * newElem, int * newCommandCode) {
+                                                     int * newElem, uint8_t * newCommandCode, Marks * label) {
 
     // buffer overflow protect
     if (fAsmSource->index->length > MAX_COMMAND_LEN) return ERR_OVERFLOW;
@@ -194,7 +214,20 @@ err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs,
 
     if (*nArgs != 1 && *nArgs != 2) return ERR_COMMAND;
 
-    err_t interpreterStat = GetCommandCode(arg1, strlen(arg1),
+    // Write a mark to the label
+    if (arg1[0] == ':') {
+
+        err_t makeMarkStat = MakeMark(label, arg1, i);
+        if (makeMarkStat != ERR_OK) {
+            return ERR_ASM;
+        }
+
+        *newCommandCode = SKIP_STEP;
+
+        return ERR_OK;
+    }
+
+    err_t interpreterStat = GetCommandCode(label, arg1, strlen(arg1),
                             newCommandCode, arg2, strlen(arg2), newElem);
 
     if (interpreterStat != ERR_OK) {
@@ -237,6 +270,45 @@ int GetRegCode(const char * arg2, size_t arg2Len) {
 
 }
 
+err_t MakeMark(Marks * label, const char * arg1, const size_t currIndex) {
+
+    ASSERT(label);
+    ASSERT(arg1);
+
+    int nMark = -1;
+
+    int scanStat = sscanf(arg1, ":%d", &nMark);
+
+    if (scanStat != 1) {
+        printf("ERROR OF MARK NUMBER READING\n");
+        return ERR_MARK;
+    }
+
+    label->nMark = nMark;
+    label->Label[nMark] = currIndex;
+
+    return ERR_OK;
+
+}
+
+err_t WriteMarkIndex(Marks * label, const char * arg2, int * newValue) {
+
+    ASSERT(label);
+    ASSERT(arg2);
+    ASSERT(newValue);
+
+    int index = -1; // number of mark
+    int indexStat = sscanf(arg2, ":%d", &index);
+
+    if (indexStat != 1) return ERR_SYNTAX;
+
+    //! Write to the JUMP's argument value of this mark index in byteCode
+    *newValue = label->Label[index];
+
+    return ERR_OK;
+
+}
+
 err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile) {
 
     ASSERT(fileName);
@@ -259,7 +331,7 @@ err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFil
 
 }
 
-err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode, 
+err_t GetCommandCode(Marks * label, const char * command, size_t commandSize, uint8_t * commandCode, 
                                            const char * arg, size_t argSize, int * newValue) {
 
     size_t hashCommand = DjbHash((const void *)command, commandSize);
@@ -275,7 +347,7 @@ err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode
             *newValue = strtod(arg, &checkPtr);
             if (arg == checkPtr) {
                 printf("Error of reading a number\n");
-                return ERR_COMMAND;
+                return ERR_SYNTAX;
             }
             return ERR_OK;
         }
@@ -301,6 +373,17 @@ err_t GetCommandCode(const char * command, size_t commandSize, int * commandCode
         if (getRegCodeStat == ERR_REGISTER) return ERR_REGISTER;
 
         *newValue = getRegCodeStat; // write a number of register to new Value
+
+        return ERR_OK;
+    }
+
+    case (HASH_JUMP): {
+        if (strcmp(command, "JUMP") != 0) return ERR_INTPR;
+
+        err_t markStat = WriteMarkIndex(label, arg, newValue);
+        if (markStat != ERR_OK) return ERR_MARK;
+
+        *commandCode = JUMP_C;
 
         return ERR_OK;
     }
