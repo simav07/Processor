@@ -53,11 +53,11 @@ err_t WriteMarkIndex(Marks * label, const char * arg2, int * newValue);
 
 //! Write commands to the file with byte code
 err_t WriteHashCom(const char * source, const char * commandsFile);
-size_t DjbHash(const void *data, size_t size);
+size_t DjbHash(const void * data, size_t size);
 
 err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, int newElem);
 err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const char * byteCodeName);
-err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs,
+err_t GetCodeArguments(FileStat * fAsmSource, size_t * count, int i, int * nArgs,
                                                      int * newElem, uint8_t * newCommandCode, Marks * label);
 //int CheckSecondArg(const char * arg2, size_t arg2Len);
 
@@ -126,8 +126,13 @@ err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
         return ERR_ASM;
     }
 
-    
+    for (int i = 0; i < 2; i++) {
+
+    printf(GREEN "%d step of assembling\n" RESET, i + 1);
+
     FILE * byteCodeFile  = fopen(byteCodeName, "w");
+
+    size_t count = 0;
 
     for (size_t i = 0; i < fAsmSource.nLines; i++) {
 
@@ -138,7 +143,7 @@ err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
 
         uint8_t newCommandCode = 0;
 
-        err_t getArgStat = GetCodeArguments(&fAsmSource, i, &nArgs, &newElem, &newCommandCode, &Label);
+        err_t getArgStat = GetCodeArguments(&fAsmSource, &count, i, &nArgs, &newElem, &newCommandCode, &Label);
         if (getArgStat != ERR_OK) {
             printf("Error of getting args\n");
             return ERR_INTPR;
@@ -158,6 +163,7 @@ err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
         printf("[%d] ", Label.Label[i]);
     }
     printf("\n");
+    }
 
     return ERR_OK;
 }
@@ -201,8 +207,8 @@ err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, int ne
 
 }
 
-err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs,
-                                                     int * newElem, uint8_t * newCommandCode, Marks * label) {
+err_t GetCodeArguments(FileStat * fAsmSource, size_t * count, int i, int * nArgs,
+                                                int * newElem, uint8_t * newCommandCode, Marks * label) {
 
     // buffer overflow protect
     if (fAsmSource->index->length > MAX_COMMAND_LEN) return ERR_OVERFLOW;
@@ -217,8 +223,9 @@ err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs,
     // Write a mark to the label
     if (arg1[0] == ':') {
 
-        err_t makeMarkStat = MakeMark(label, arg1, i);
+        err_t makeMarkStat = MakeMark(label, arg1, *count);
         if (makeMarkStat != ERR_OK) {
+            printf("Make mark error\n");
             return ERR_ASM;
         }
 
@@ -226,6 +233,8 @@ err_t GetCodeArguments(FileStat * fAsmSource, int i, int * nArgs,
 
         return ERR_OK;
     }
+
+    *count += *nArgs;
 
     err_t interpreterStat = GetCommandCode(label, arg1, strlen(arg1),
                             newCommandCode, arg2, strlen(arg2), newElem);
@@ -302,8 +311,13 @@ err_t WriteMarkIndex(Marks * label, const char * arg2, int * newValue) {
 
     if (indexStat != 1) return ERR_SYNTAX;
 
+    int newIndex = label->Label[index];
+    if (newIndex == 0) {
+        return ERR_SKIP_ARG;
+    }
+
     //! Write to the JUMP's argument value of this mark index in byteCode
-    *newValue = label->Label[index];
+    *newValue = newIndex;
 
     return ERR_OK;
 
@@ -333,6 +347,11 @@ err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFil
 
 err_t GetCommandCode(Marks * label, const char * command, size_t commandSize, uint8_t * commandCode, 
                                            const char * arg, size_t argSize, int * newValue) {
+
+    ASSERT(label);
+    ASSERT(command);
+    ASSERT(commandCode);
+    ASSERT(arg);
 
     size_t hashCommand = DjbHash((const void *)command, commandSize);
 
@@ -378,12 +397,36 @@ err_t GetCommandCode(Marks * label, const char * command, size_t commandSize, ui
     }
 
     case (HASH_JUMP): {
+
         if (strcmp(command, "JUMP") != 0) return ERR_INTPR;
 
         err_t markStat = WriteMarkIndex(label, arg, newValue);
+
+        if (markStat == ERR_SKIP_ARG) {
+            *commandCode = SKIP_STEP;
+            return ERR_OK;
+        }
+
         if (markStat != ERR_OK) return ERR_MARK;
 
         *commandCode = JUMP_C;
+
+        return ERR_OK;
+    }
+
+    case (HASH_JA): {
+        if (strcmp(command, "JA") != 0) return ERR_INTPR;
+
+        err_t markStat = WriteMarkIndex(label, arg, newValue);
+
+        if (markStat == ERR_SKIP_ARG) {
+            *commandCode = SKIP_STEP;
+            return ERR_OK;
+        }
+
+        if (markStat != ERR_OK) return ERR_MARK;
+
+        *commandCode = JA_C;
 
         return ERR_OK;
     }

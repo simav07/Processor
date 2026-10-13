@@ -8,12 +8,13 @@ enum COMMANDS {
     SUB_C  = 3,
     DIV_C  = 4,
     MUL_C  = 5,
-    PUSH_R,
-    POP_R,
-    SKIP_STEP,
-    JUMP_C,
-    OUT_C,
-    HLT_C,
+    PUSH_R = 6,
+    POP_R  = 7,
+    SKIP_STEP = 8,
+    JUMP_C = 9,
+    JA_C = 10,
+    OUT_C = 11,
+    HLT_C = 12,
 };
 
 #endif

@@ -7,7 +7,9 @@ struct VM_resource {
     stack_t stack = {};
     int * byteCode = NULL;
     size_t byteCodeLen = 0;
+    
     size_t pc = 0;
+    bool pcChanged = false;
 
     //! Registers
     stackElem_t regstr[5] = {};
@@ -18,6 +20,8 @@ const char * CMD_FLAG_BYTECODE = "--bytecode";
 
 //! File for StackDump, there we can see what happening with stack
 const char * FILE_STACKDUMP = "dump.txt";
+
+void VmDump(FILE * stream, VM_resource * virtualMachine, int goOn);
 
 err_t GetBCfilenameStd(int argc, char * argv[], char * readFromFile);
 
@@ -43,6 +47,7 @@ err_t PopR(VM_resource * virtualMachine); // pushRegister
 err_t PushR(VM_resource * virtualMachine, int nRegister);
 
 err_t Jump(VM_resource * virtualMachine, int index);
+err_t JA(VM_resource * virtualMachine, int index);
 
 err_t AddCom(stack_t * stack);
 err_t SubCom(stack_t * stack);
@@ -119,8 +124,6 @@ err_t RunVirtualMachine(VM_resource * virtualMachine) {
 
     while (virtualMachine->byteCode[virtualMachine->pc] != HLT_C) {
 
-        StackDump(file_p, &(virtualMachine->stack));
-
         if (virtualMachine->pc > virtualMachine->byteCodeLen) {
             printf(BOLD_RED "In asm file no HLT command\n" RESET);
             return ERR_PROCESSING;
@@ -137,14 +140,21 @@ err_t RunVirtualMachine(VM_resource * virtualMachine) {
 
         }
 
+        virtualMachine->pcChanged = false;
+
         int goOn = Interpreter(virtualMachine, virtualMachine->pc);
 
         if (goOn == ERR_COMMAND) {
             printf(RED "ERROR_PROCESSING\n" RESET);
             return ERR_PROCESSING;
         }
-        virtualMachine->pc = virtualMachine->pc + goOn;
 
+        VmDump(file_p, virtualMachine, goOn);
+        getchar();
+
+        if (virtualMachine->pcChanged == false) {
+            virtualMachine->pc = virtualMachine->pc + goOn;
+        }
     }
     fclose(file_p);
 
@@ -171,6 +181,9 @@ err_t Interpreter(VM_resource * virtualMachine, int index) {
 
     case (JUMP_C):
         return Jump(virtualMachine, index);
+
+    case (JA_C):
+        return JA(virtualMachine, index);
     
     // ADD (+)
     case (ADD_C):
@@ -251,9 +264,26 @@ err_t Jump(VM_resource * virtualMachine, int index) {
     int jumpIndex = virtualMachine->byteCode[index + 1];
 
     virtualMachine->pc = jumpIndex;
+    virtualMachine->pcChanged = true;
 
     return 2;
 
+}
+
+err_t JA(VM_resource * virtualMachine, int index) {
+
+    err_t popStat1 = 0;
+    err_t popStat2 = 0;
+
+    stackElem_t a = StackPop(&(virtualMachine->stack), &popStat1);
+    stackElem_t b = StackPop(&(virtualMachine->stack), &popStat2);
+
+    if (b > a) {
+        printf("JUMP argument: %d\n", virtualMachine->byteCode[index+1]);
+        return Jump(virtualMachine, index);
+    }
+
+    return 2;
 }
 
 // Get 2 last elems from stack
@@ -426,6 +456,68 @@ size_t ReadByteCode(const FileStat * txtFile, int * codeBuffer) {
     
     return count;
     
+}
+
+//-----------------------------------------------------------------
+// DEBUG
+//-----------------------------------------------------------------
+
+void VmDump(FILE * stream, VM_resource * virtualMachine, int goOn) {
+
+    StackDump(stream, &(virtualMachine->stack));
+
+    printf("\n");
+    printf(YELLOW "-------------------------------------------------------------------------\n" RESET);
+    printf(YELLOW "                    <<<<<< VM DUMP >>>>>>                                \n" RESET);
+    printf(YELLOW "-------------------------------------------------------------------------\n" RESET);
+
+    printf("virtual machine: [%p]\n", virtualMachine);
+    printf("Registers:\n");
+
+    for (size_t i = 0; i < 5; i++) {
+        printf("[%1s%d] ", "R", i);
+    }
+    printf("\n");
+
+    for (size_t i = 0; i < 5; i++) {
+
+        if (virtualMachine->regstr[i] != 0) {
+            printf("[" GREEN "%2lg" RESET "] ", virtualMachine->regstr[i]);
+            continue;
+        }
+
+        printf("[%2lg] ", virtualMachine->regstr[i]);
+    }
+    printf("\n");
+
+    printf("<<<<Byte code>>>>\n");
+    for (size_t i = 0; i < virtualMachine->byteCodeLen; i++) {
+
+        printf("[%2d] ", i);
+
+    }
+    printf("\n");
+
+    for (size_t i = 0; i < virtualMachine->byteCodeLen; i++) {
+
+        if (i < virtualMachine->pc) {
+            printf("[%2d] ", virtualMachine->byteCode[i]);
+        }
+
+        if (i >= virtualMachine->pc && i < virtualMachine->pc + goOn) {
+
+            printf(BOLD_RED "[%2d] " RESET, virtualMachine->byteCode[i]);
+
+        }
+
+        if (i >= virtualMachine->pc + goOn) {
+            printf("[%2d] ", virtualMachine->byteCode[i]);
+        }
+    }
+    printf("\n");
+    printf(YELLOW "\n-------------------------------------------------------------------------\n" RESET);
+    printf("\n");
+
 }
 
 // IO functions ----------------------------------------------------

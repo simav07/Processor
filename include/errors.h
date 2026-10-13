@@ -46,6 +46,7 @@ enum {
     ERR_REGISTER,
     ERR_MARK,
     ERR_SYNTAX,
+    ERR_SKIP_ARG,
 };
 
 #endif
