@@ -420,6 +420,35 @@ err_t GetCommandCode(Marks * label, const char * command, size_t commandSize, ui
         return ERR_OK;
     }
 
+    case (HASH_CALL): {
+
+        if (strcmp(command, "CALL") != 0) return ERR_INTPR;
+
+        err_t markStat = WriteMarkIndex(label, arg, newValue);
+
+        if (markStat == ERR_SKIP_ARG) {
+            *commandCode = SKIP_STEP;
+            return ERR_OK;
+        }
+
+        if (markStat != ERR_OK) return ERR_MARK;
+
+        *commandCode = CALL_C;
+
+        return ERR_OK;
+
+    }
+
+    case (HASH_RET): {
+
+        if (strcmp(command, "RET") != 0) return ERR_INTPR;
+
+        *commandCode = RET_C;
+
+        return ERR_OK;
+
+    }
+
     case (HASH_JUMP): {
 
         if (strcmp(command, "JUMP") != 0) return ERR_INTPR;

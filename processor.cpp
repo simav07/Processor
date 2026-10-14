@@ -4,12 +4,16 @@
 #include "hashcommands.h"
 
 struct VM_resource {
+
     stack_t stack = {};
+    
     int * byteCode = NULL;
     size_t byteCodeLen = 0;
     
     size_t pc = 0;
     bool pcChanged = false;
+
+    stack_t funcStack = {};
 
     //! Registers
     stackElem_t regstr[5] = {};
@@ -48,7 +52,7 @@ err_t GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b);
 err_t PopR(VM_resource * virtualMachine); // pushRegister
 err_t PushR(VM_resource * virtualMachine, int nRegister);
 
-err_t Jump(VM_resource * virtualMachine, int index);
+err_t Jump(VM_resource * virtualMachine, size_t jumpIndex);
 err_t JA(VM_resource * virtualMachine, int index);
 err_t JAE(VM_resource * virtualMachine, int index);
 err_t JB(VM_resource * virtualMachine, int index);
@@ -61,6 +65,9 @@ err_t AddCom(stack_t * stack);
 err_t SubCom(stack_t * stack);
 err_t DivCom(stack_t * stack);
 err_t MulCom(stack_t * stack);
+
+err_t Call(VM_resource * virtualMachine, int index);
+err_t Ret(VM_resource * virtualMachine, int index);
 
 stackElem_t OutCom(stack_t * stack);
 // -------------------------------------------------------------------
@@ -123,8 +130,11 @@ err_t RunVirtualMachine(VM_resource * virtualMachine) {
 
     virtualMachine->pc = 0;
 
-    int ctorStat = StackCtor(&(virtualMachine->stack), 10);
-    if (ctorStat != ERR_OK) return ERR_CTOR;
+    int ctorStat1 = StackCtor(&(virtualMachine->stack), 10);
+    if (ctorStat1 != ERR_OK) return ERR_CTOR;
+
+    int ctorStat2 = StackCtor(&(virtualMachine->funcStack), 10);
+    if (ctorStat2 != ERR_OK) return ERR_CTOR;
 
     FILE * file_p = fopen(FILE_STACKDUMP, "w");
 
@@ -171,6 +181,9 @@ err_t RunVirtualMachine(VM_resource * virtualMachine) {
     }
     fclose(file_p);
 
+    StackDtor(&(virtualMachine->funcStack));
+    StackDtor(&(virtualMachine->stack));
+
     return ERR_OK;
 }
 
@@ -191,7 +204,7 @@ err_t Interpreter(VM_resource * virtualMachine, int index) {
         return PushR(virtualMachine, virtualMachine->byteCode[index + 1]);
 
     case (JUMP_C):
-        return Jump(virtualMachine, index);
+        return Jump(virtualMachine, virtualMachine->byteCode[index + 1]);
 
     case (JA_C):
         return JA(virtualMachine, index);
@@ -213,6 +226,12 @@ err_t Interpreter(VM_resource * virtualMachine, int index) {
 
     case (IN_C):
         return IN(virtualMachine);
+
+    case (RET_C):
+        return Ret(virtualMachine, index);
+
+    case (CALL_C):
+        return Call(virtualMachine, index);
     
     // ADD (+)
     case (ADD_C):
@@ -288,9 +307,9 @@ err_t PushR(VM_resource * virtualMachine, int nRegister) {
     return 2;
 }
 
-err_t Jump(VM_resource * virtualMachine, int index) {
+err_t Jump(VM_resource * virtualMachine, size_t jumpIndex) {
 
-    int jumpIndex = virtualMachine->byteCode[index + 1];
+    // int jumpIndex = virtualMachine->byteCode[index + 1];
 
     virtualMachine->pc = jumpIndex;
     virtualMachine->pcChanged = true;
@@ -308,7 +327,7 @@ err_t JA(VM_resource * virtualMachine, int index) {
     stackElem_t a = StackPop(&(virtualMachine->stack), &popStat2);
 
     if (a > b) {
-        return Jump(virtualMachine, index);
+        return Jump(virtualMachine, virtualMachine->byteCode[index + 1]);
     }
 
     return 2;
@@ -323,7 +342,7 @@ err_t JAE(VM_resource * virtualMachine, int index) {
     stackElem_t a = StackPop(&(virtualMachine->stack), &popStat2);
 
     if (a >= b) {
-        return Jump(virtualMachine, index);
+        return Jump(virtualMachine, virtualMachine->byteCode[index + 1]);
     }
 
     return 2;
@@ -338,7 +357,7 @@ err_t JB(VM_resource * virtualMachine, int index) {
     stackElem_t a = StackPop(&(virtualMachine->stack), &popStat2);
 
     if (a < b) {
-        return Jump(virtualMachine, index);
+        return Jump(virtualMachine, virtualMachine->byteCode[index + 1]);
     }
 
     return 2;
@@ -353,7 +372,7 @@ err_t JBE(VM_resource * virtualMachine, int index) {
     stackElem_t a = StackPop(&(virtualMachine->stack), &popStat2);
 
     if (a <= b) {
-        return Jump(virtualMachine, index);
+        return Jump(virtualMachine, virtualMachine->byteCode[index + 1]);
     }
 
     return 2;
@@ -368,7 +387,7 @@ err_t JE(VM_resource * virtualMachine, int index) {
     stackElem_t a = StackPop(&(virtualMachine->stack), &popStat2);
 
     if (a == b) {
-        return Jump(virtualMachine, index);
+        return Jump(virtualMachine, virtualMachine->byteCode[index + 1]);
     }
 
     return 2;
@@ -383,7 +402,7 @@ err_t JNE(VM_resource * virtualMachine, int index) {
     stackElem_t a = StackPop(&(virtualMachine->stack), &popStat2);
 
     if (a != b) {
-        return Jump(virtualMachine, index);
+        return Jump(virtualMachine, virtualMachine->byteCode[index + 1]);
     }
 
     return 2;
@@ -408,6 +427,27 @@ err_t IN(VM_resource * virtualMachine) {
 
     printf("Incorrect input\n");
     return ERR_PROCESSING;
+}
+
+err_t Call(VM_resource * virtualMachine, int index) {
+
+    err_t pushStat = StackPush(&(virtualMachine->funcStack), virtualMachine->pc);
+    if (pushStat != ERR_OK) return ERR_CALL;
+
+    Jump(virtualMachine, virtualMachine->byteCode[index + 1]);
+
+    return 2;
+}
+
+err_t Ret(VM_resource * virtualMachine, int index) {
+
+    err_t popStat = 0;
+    size_t backIndex = StackPop(&(virtualMachine->funcStack), &popStat);
+    if (popStat != ERR_OK) return ERR_RET;
+
+    Jump(virtualMachine, backIndex + 2); // ???
+
+    return 1;
 }
 
 // Get 2 last elems from stack
