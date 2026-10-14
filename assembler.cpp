@@ -26,10 +26,13 @@ struct Marks {
 
 //! Flag for user's filename of asm source
 const char * CMD_FLAG_ASM = "--asmsource";
+//! Flag for user's filename of byte code
+const char * CMD_FLAG_BC  = "--bytecode";
 
 //! Default filename for writing a byte code 
-// const char * PROG_BYTECODE_FILE = "pbytecode.txt";
 const char * PROG_BYTECODE_FILE = "bcode.bin";
+
+char * BYTECODE_FILENAME = NULL;
 
 //! Max command length for commands (bad)
 const int MAX_COMMAND_LEN = 20;
@@ -94,13 +97,21 @@ err_t GetAsmFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo) {
     ASSERT(*argv);
 
     // add more if
-    if ((argc == 3) && (!strcmp(argv[1], CMD_FLAG_ASM))) {
+    if (((argc == 3) || (argc == 5)) && (!strcmp(argv[1], CMD_FLAG_ASM))) {
 
         if (!argv[2]) return false;
 
         //! User put asm filename, so assembler must make a bytecode
 
         (*fileInfo).readFrom = argv[2];
+
+        //! User's filename
+        if ((argc == 5) && !strcmp(argv[3], CMD_FLAG_BC)) {
+            (*fileInfo).writeTo  = argv[4];
+            return true;
+        }
+
+        //! Else - default filename
         (*fileInfo).writeTo  = (char *)PROG_BYTECODE_FILE;
 
         return true;
@@ -128,7 +139,7 @@ err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
 
     for (int i = 0; i < 2; i++) {
 
-    printf(GREEN "%d step of assembling\n" RESET, i + 1);
+    printf(YELLOW "%d step of assembling...\n" RESET, i + 1);
 
     FILE * byteCodeFile  = fopen(byteCodeName, "w");
 
@@ -158,11 +169,14 @@ err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
     }
     fclose(byteCodeFile);
 
+    #ifdef MARKDUMP
     printf("\nLABEL WITH MARKS: \n");
     for (size_t i = 0; i <= Label.nMark; i++) {
         printf("[%d] ", Label.Label[i]);
     }
     printf("\n");
+    #endif
+
     }
 
     return ERR_OK;

@@ -59,7 +59,7 @@ stackElem_t OutCom(stack_t * stack);
 
 int main(const int argc, char * argv[]) {
 
-    printf("\nFile <%s>, [%s]\n", __FILE__, __TIME__);
+    printf("\nExecutable file <%s>, [%s]\n", __FILE__, __TIME__);
 
     VM_resource virtualMachine = {};
     
@@ -136,6 +136,9 @@ err_t RunVirtualMachine(VM_resource * virtualMachine) {
 
             outResult = out;
             virtualMachine->pc++;
+
+            printf(BOLD_GREEN "Output: %lg" RESET "\n", outResult);
+            
             continue;
 
         }
@@ -149,16 +152,16 @@ err_t RunVirtualMachine(VM_resource * virtualMachine) {
             return ERR_PROCESSING;
         }
 
-        VmDump(file_p, virtualMachine, goOn);
+        #ifdef VMDump
+        VmDump(stdout, virtualMachine, goOn);
         getchar();
+        #endif
 
         if (virtualMachine->pcChanged == false) {
             virtualMachine->pc = virtualMachine->pc + goOn;
         }
     }
     fclose(file_p);
-
-    printf(BOLD_GREEN "Output: %lg" RESET, outResult);
 
     return ERR_OK;
 }
@@ -279,7 +282,6 @@ err_t JA(VM_resource * virtualMachine, int index) {
     stackElem_t b = StackPop(&(virtualMachine->stack), &popStat2);
 
     if (b > a) {
-        printf("JUMP argument: %d\n", virtualMachine->byteCode[index+1]);
         return Jump(virtualMachine, index);
     }
 
@@ -408,14 +410,6 @@ size_t GetByteCode(int ** byteCode, const char * byteCodeFilename) {
         return ERR_BYTECODE;
     }
 
-    // Beauty print
-    for (int i = 0; i < codeBytesLen; i++) {
-
-        printf("[%d] ", *(*byteCode + i));
-
-    }
-    printf("\n");
-
     return codeBytesLen;
 
 }
@@ -464,12 +458,12 @@ size_t ReadByteCode(const FileStat * txtFile, int * codeBuffer) {
 
 void VmDump(FILE * stream, VM_resource * virtualMachine, int goOn) {
 
-    StackDump(stream, &(virtualMachine->stack));
-
     printf("\n");
     printf(YELLOW "-------------------------------------------------------------------------\n" RESET);
     printf(YELLOW "                    <<<<<< VM DUMP >>>>>>                                \n" RESET);
     printf(YELLOW "-------------------------------------------------------------------------\n" RESET);
+
+    StackDump(stream, &(virtualMachine->stack));
 
     printf("virtual machine: [%p]\n", virtualMachine);
     printf("Registers:\n");
@@ -482,7 +476,7 @@ void VmDump(FILE * stream, VM_resource * virtualMachine, int goOn) {
     for (size_t i = 0; i < 5; i++) {
 
         if (virtualMachine->regstr[i] != 0) {
-            printf("[" GREEN "%2lg" RESET "] ", virtualMachine->regstr[i]);
+            printf(BOLD_GREEN "[%2lg] " RESET, virtualMachine->regstr[i]);
             continue;
         }
 
