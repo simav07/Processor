@@ -55,6 +55,7 @@ err_t JB(VM_resource * virtualMachine, int index);
 err_t JBE(VM_resource * virtualMachine, int index);
 err_t JE(VM_resource * virtualMachine, int index);
 err_t JNE(VM_resource * virtualMachine, int index);
+err_t IN(VM_resource * virtualMachine);
 
 err_t AddCom(stack_t * stack);
 err_t SubCom(stack_t * stack);
@@ -209,6 +210,9 @@ err_t Interpreter(VM_resource * virtualMachine, int index) {
         
     case (JNE_C):
         return JNE(virtualMachine, index);
+
+    case (IN_C):
+        return IN(virtualMachine);
     
     // ADD (+)
     case (ADD_C):
@@ -383,6 +387,27 @@ err_t JNE(VM_resource * virtualMachine, int index) {
     }
 
     return 2;
+}
+
+err_t IN(VM_resource * virtualMachine) {
+
+    ASSERT(virtualMachine);
+
+    int newElem = 0;
+
+    int nArgs = scanf("%d", &newElem);
+
+    if (nArgs == 1) {
+
+        err_t pushStat = StackPush(&(virtualMachine->stack), newElem);
+        if (pushStat != ERR_OK) return ERR_PROCESSING;
+
+        return 1;
+
+    }
+
+    printf("Incorrect input\n");
+    return ERR_PROCESSING;
 }
 
 // Get 2 last elems from stack

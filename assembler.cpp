@@ -207,11 +207,20 @@ err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, int ne
     if ((args == 1) || (args == 2 && newElem == POISON_VALUE)) {  // real command without argument
 
         fprintf(fileSource, "%d\n", newCommandCode);
+
+        // if (fwrite(&newCommandCode, sizeof(uint8_t), 1, fileSource) != 1) return ERR_ASM;
+        
         return ERR_OK;
 
     }
 
     if (args == 2) {  // real command with one argument
+
+        // if (fwrite(&newCommandCode, sizeof(uint8_t), 1, fileSource) != 1) return ERR_ASM;
+
+        int32_t argument = (int32_t)newElem;
+
+        // if (fwrite(&argument, sizeof(int32_t), 1, fileSource) != 1) return ERR_ASM;
 
         fprintf(fileSource, "%d\t%d\n", newCommandCode, newElem);
         return ERR_OK;
@@ -476,6 +485,13 @@ err_t GetCommandCode(Marks * label, const char * command, size_t commandSize, ui
         *commandCode = JNE_C;
         return WriteJumpMark(label, arg, newValue, commandCode);
 
+    }
+
+    case (HASH_IN): {
+        if (strcmp(command, "IN") != 0) return ERR_INTPR;
+
+        *commandCode = IN_C;
+        return ERR_OK;
     }
 
     case (HASH_ADD): {
