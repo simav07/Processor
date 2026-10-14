@@ -18,6 +18,8 @@ struct VM_resource {
 //! Flag for byte code filename
 const char * CMD_FLAG_BYTECODE = "--bytecode";
 
+//! #define VMDump for debug
+
 //! File for StackDump, there we can see what happening with stack
 const char * FILE_STACKDUMP = "dump.txt";
 
@@ -48,6 +50,11 @@ err_t PushR(VM_resource * virtualMachine, int nRegister);
 
 err_t Jump(VM_resource * virtualMachine, int index);
 err_t JA(VM_resource * virtualMachine, int index);
+err_t JAE(VM_resource * virtualMachine, int index);
+err_t JB(VM_resource * virtualMachine, int index);
+err_t JBE(VM_resource * virtualMachine, int index);
+err_t JE(VM_resource * virtualMachine, int index);
+err_t JNE(VM_resource * virtualMachine, int index);
 
 err_t AddCom(stack_t * stack);
 err_t SubCom(stack_t * stack);
@@ -59,7 +66,7 @@ stackElem_t OutCom(stack_t * stack);
 
 int main(const int argc, char * argv[]) {
 
-    printf("\nExecutable file <%s>, [%s]\n", __FILE__, __TIME__);
+    printf("\nFile <%s>, [%s]\n", __FILE__, __TIME__);
 
     VM_resource virtualMachine = {};
     
@@ -187,6 +194,21 @@ err_t Interpreter(VM_resource * virtualMachine, int index) {
 
     case (JA_C):
         return JA(virtualMachine, index);
+
+    case (JAE_C):
+        return JAE(virtualMachine, index);
+
+    case (JB_C):
+        return JB(virtualMachine, index);
+
+    case (JBE_C):
+        return JBE(virtualMachine, index);
+
+    case (JE_C):
+        return JE(virtualMachine, index);
+        
+    case (JNE_C):
+        return JNE(virtualMachine, index);
     
     // ADD (+)
     case (ADD_C):
@@ -278,10 +300,85 @@ err_t JA(VM_resource * virtualMachine, int index) {
     err_t popStat1 = 0;
     err_t popStat2 = 0;
 
-    stackElem_t a = StackPop(&(virtualMachine->stack), &popStat1);
-    stackElem_t b = StackPop(&(virtualMachine->stack), &popStat2);
+    stackElem_t b = StackPop(&(virtualMachine->stack), &popStat1);
+    stackElem_t a = StackPop(&(virtualMachine->stack), &popStat2);
 
-    if (b > a) {
+    if (a > b) {
+        return Jump(virtualMachine, index);
+    }
+
+    return 2;
+}
+
+err_t JAE(VM_resource * virtualMachine, int index) {
+
+    err_t popStat1 = 0;
+    err_t popStat2 = 0;
+
+    stackElem_t b = StackPop(&(virtualMachine->stack), &popStat1);
+    stackElem_t a = StackPop(&(virtualMachine->stack), &popStat2);
+
+    if (a >= b) {
+        return Jump(virtualMachine, index);
+    }
+
+    return 2;
+}
+
+err_t JB(VM_resource * virtualMachine, int index) {
+
+    err_t popStat1 = 0;
+    err_t popStat2 = 0;
+
+    stackElem_t b = StackPop(&(virtualMachine->stack), &popStat1);
+    stackElem_t a = StackPop(&(virtualMachine->stack), &popStat2);
+
+    if (a < b) {
+        return Jump(virtualMachine, index);
+    }
+
+    return 2;
+}
+
+err_t JBE(VM_resource * virtualMachine, int index) {
+
+    err_t popStat1 = 0;
+    err_t popStat2 = 0;
+
+    stackElem_t b = StackPop(&(virtualMachine->stack), &popStat1);
+    stackElem_t a = StackPop(&(virtualMachine->stack), &popStat2);
+
+    if (a <= b) {
+        return Jump(virtualMachine, index);
+    }
+
+    return 2;
+}
+
+err_t JE(VM_resource * virtualMachine, int index) {
+
+    err_t popStat1 = 0;
+    err_t popStat2 = 0;
+
+    stackElem_t b = StackPop(&(virtualMachine->stack), &popStat1);
+    stackElem_t a = StackPop(&(virtualMachine->stack), &popStat2);
+
+    if (a == b) {
+        return Jump(virtualMachine, index);
+    }
+
+    return 2;
+}
+
+err_t JNE(VM_resource * virtualMachine, int index) {
+
+    err_t popStat1 = 0;
+    err_t popStat2 = 0;
+
+    stackElem_t b = StackPop(&(virtualMachine->stack), &popStat1);
+    stackElem_t a = StackPop(&(virtualMachine->stack), &popStat2);
+
+    if (a != b) {
         return Jump(virtualMachine, index);
     }
 
@@ -487,7 +584,19 @@ void VmDump(FILE * stream, VM_resource * virtualMachine, int goOn) {
     printf("<<<<Byte code>>>>\n");
     for (size_t i = 0; i < virtualMachine->byteCodeLen; i++) {
 
-        printf("[%2d] ", i);
+        if (i < virtualMachine->pc) {
+            printf(" %2d  ", i);
+        }
+
+        if (i >= virtualMachine->pc && i < virtualMachine->pc + goOn) {
+
+            printf(BOLD_RED "[%2d] " RESET, i);
+
+        }
+
+        if (i >= virtualMachine->pc + goOn) {
+            printf(" %2d  ", i);
+        }
 
     }
     printf("\n");
@@ -527,7 +636,7 @@ err_t GetBCfilenameStd(int argc, char * argv[], char * readFromFile) {
         size_t len = strlen(argv[2]);
         memcpy(readFromFile, argv[2], len + 1);  // +1 for '\0'
 
-        printf(YELLOW "Filename: <%s>\n" RESET, argv[2]);
+        printf(YELLOW "Executable file: <%s>\n" RESET, argv[2]);
 
         return ERR_OK;
     }

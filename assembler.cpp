@@ -51,6 +51,7 @@ err_t GetCommandCode(Marks * label, const char * command, size_t commandSize, ui
                                            const char * arg, size_t argSize, int * newValue);
 int GetRegCode(const char * arg2, size_t arg2Len);
 
+err_t WriteJumpMark(Marks * label, const char * arg, int * newValue, uint8_t * commandCode);
 err_t MakeMark(Marks * label, const char * arg1, const size_t currIndex);
 err_t WriteMarkIndex(Marks * label, const char * arg2, int * newValue);
 
@@ -431,20 +432,52 @@ err_t GetCommandCode(Marks * label, const char * command, size_t commandSize, ui
     case (HASH_JA): {
         if (strcmp(command, "JA") != 0) return ERR_INTPR;
 
-        err_t markStat = WriteMarkIndex(label, arg, newValue);
-
-        if (markStat == ERR_SKIP_ARG) {
-            *commandCode = SKIP_STEP;
-            return ERR_OK;
-        }
-
-        if (markStat != ERR_OK) return ERR_MARK;
-
         *commandCode = JA_C;
 
-        return ERR_OK;
+        return WriteJumpMark(label, arg, newValue, commandCode);
+
     }
-    
+
+    case (HASH_JAE): {
+        if (strcmp(command, "JAE") != 0) return ERR_INTPR;
+
+        *commandCode = JAE_C;
+        return WriteJumpMark(label, arg, newValue, commandCode);
+
+    }
+
+    case (HASH_JB): {
+        if (strcmp(command, "JB") != 0) return ERR_INTPR;
+
+        *commandCode = JB_C;
+        return WriteJumpMark(label, arg, newValue, commandCode);
+
+    }
+
+    case (HASH_JBE): {
+        if (strcmp(command, "JBE") != 0) return ERR_INTPR;
+
+        *commandCode = JBE_C;
+        return WriteJumpMark(label, arg, newValue, commandCode);
+
+    }
+
+    case (HASH_JE): {
+        if (strcmp(command, "JE") != 0) return ERR_INTPR;
+
+        *commandCode = JE_C;
+        return WriteJumpMark(label, arg, newValue, commandCode);
+
+    }
+
+    case (HASH_JNE): {
+        if (strcmp(command, "JNE") != 0) return ERR_INTPR;
+
+        *commandCode = JNE_C;
+        return WriteJumpMark(label, arg, newValue, commandCode);
+
+    }
+
     case (HASH_ADD): {
         if (strcmp(command, "ADD") != 0) return ERR_INTPR;
         *commandCode = ADD_C;
@@ -480,6 +513,21 @@ err_t GetCommandCode(Marks * label, const char * command, size_t commandSize, ui
     }
 
     return ERR_INTPR;
+}
+
+err_t WriteJumpMark(Marks * label, const char * arg, int * newValue, uint8_t * commandCode) {
+
+    err_t markStat = WriteMarkIndex(label, arg, newValue);
+
+    if (markStat == ERR_SKIP_ARG) {
+        *commandCode = SKIP_STEP;
+        return ERR_OK;
+    }
+
+    if (markStat != ERR_OK) return ERR_MARK;
+
+    return ERR_OK;
+
 }
 
 size_t DjbHash(const void *data, size_t size) {
