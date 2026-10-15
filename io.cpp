@@ -32,25 +32,44 @@ err_t ReadTxtFile(const char filename[], const char mode[], FileStat * fileInfo)
 
     fileInfo->sizeInBytes = (size_t)fileStat.st_size;
 
-    char * buffer = (char *)calloc(fileInfo->sizeInBytes + 1, sizeof(char));
+    void * buffer = calloc(fileInfo->sizeInBytes + 1, sizeof(char));
     if (!buffer) {
         fclose(file_p);
         return false;
     }
+    
+    if (openMode != "rb") {
+        size_t bytesRead = fread(buffer, sizeof(char), fileInfo->sizeInBytes, file_p);
 
-    size_t bytesRead = fread(buffer, sizeof(char), fileInfo->sizeInBytes, file_p);
+        if (ferror(file_p)) {
+            int savedErrno = errno;
+            free(buffer);
+            fclose(file_p);
+            PrintErrno(fileInfo->readFrom, savedErrno);
+            return false;
+        }
 
-    if (ferror(file_p)) {
-        int savedErrno = errno;
-        free(buffer);
-        fclose(file_p);
-        PrintErrno(fileInfo->readFrom, savedErrno);
-        return false;
+        *((char *)buffer + bytesRead) = '\0';
+        fileInfo->sizeInBytes = bytesRead;
+        fileInfo->text_ptr = buffer;
     }
 
-    buffer[bytesRead] = '\0';
-    fileInfo->sizeInBytes = bytesRead;
-    fileInfo->text_ptr = buffer;
+    else {
+
+        size_t bytesRead = fread(buffer, sizeof(int32_t), fileInfo->sizeInBytes, file_p);
+
+        if (ferror(file_p)) {
+            int savedErrno = errno;
+            free(buffer);
+            fclose(file_p);
+            PrintErrno(fileInfo->readFrom, savedErrno);
+            return false;
+        }
+
+        fileInfo->sizeInBytes = bytesRead;
+        fileInfo->text_ptr = buffer;
+
+    }
 
     fclose(file_p);
 
@@ -116,13 +135,13 @@ void FillIndexes(FileStat * fileInfo) {
     ASSERT(fileInfo->text_ptr);
 
     // Count lines before splitting the buffer.
-    fileInfo->nLines = CountElems(fileInfo->text_ptr, '\n');
+    fileInfo->nLines = CountElems((const char *)fileInfo->text_ptr, '\n');
 
     fileInfo->index = (StringInfo *)calloc(fileInfo->nLines, sizeof(StringInfo));
 
     ASSERT(fileInfo->index);
 
-    fileInfo->nLines = StringsParser(fileInfo->text_ptr, '\n', fileInfo->index);
+    fileInfo->nLines = StringsParser((char *)fileInfo->text_ptr, '\n', fileInfo->index);
 }
 
 

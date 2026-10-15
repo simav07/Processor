@@ -47,11 +47,11 @@ err_t GetAsmFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo);
 
 err_t Assemble(const char * asmSourceName, const char * byteCodeName);
 
-err_t GetCommandCode(Marks * label, const char * command, size_t commandSize, uint8_t * commandCode, 
+err_t GetCommandCode(Marks * label, const char * command, size_t commandSize, int32_t * commandCode, 
                                            const char * arg, size_t argSize, int * newValue);
 int GetRegCode(const char * arg2, size_t arg2Len);
 
-err_t WriteJumpMark(Marks * label, const char * arg, int * newValue, uint8_t * commandCode);
+err_t WriteJumpMark(Marks * label, const char * arg, int * newValue, int32_t * commandCode);
 err_t MakeMark(Marks * label, const char * arg1, const size_t currIndex);
 err_t WriteMarkIndex(Marks * label, const char * arg2, int * newValue);
 
@@ -59,10 +59,10 @@ err_t WriteMarkIndex(Marks * label, const char * arg2, int * newValue);
 err_t WriteHashCom(const char * source, const char * commandsFile);
 size_t DjbHash(const void * data, size_t size);
 
-err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, int newElem);
+err_t WriteArguments(FILE * fileSource, int args, int32_t newCommandCode, int newElem);
 err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const char * byteCodeName);
 err_t GetCodeArguments(FileStat * fAsmSource, size_t * count, int i, int * nArgs,
-                                                     int * newElem, uint8_t * newCommandCode, Marks * label);
+                                                     int * newElem, int32_t * newCommandCode, Marks * label);
 //int CheckSecondArg(const char * arg2, size_t arg2Len);
 
 err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile);
@@ -142,7 +142,7 @@ err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
 
     printf(YELLOW "%d step of assembling...\n" RESET, i + 1);
 
-    FILE * byteCodeFile  = fopen(byteCodeName, "w");
+    FILE * byteCodeFile  = fopen(byteCodeName, "wb");
 
     size_t count = 0;
 
@@ -153,7 +153,7 @@ err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
         int newElem = 0;
         int nArgs = 0;
 
-        uint8_t newCommandCode = 0;
+        int32_t newCommandCode = 0;
 
         err_t getArgStat = GetCodeArguments(&fAsmSource, &count, i, &nArgs, &newElem, &newCommandCode, &Label);
         if (getArgStat != ERR_OK) {
@@ -198,7 +198,7 @@ err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const 
     return ERR_OK;
 }
 
-err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, int newElem) {
+err_t WriteArguments(FILE * fileSource, int args, int32_t newCommandCode, int newElem) {
 
     ASSERT(fileSource);
 
@@ -206,9 +206,9 @@ err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, int ne
 
     if ((args == 1) || (args == 2 && newElem == POISON_VALUE)) {  // real command without argument
 
-        fprintf(fileSource, "%d\n", newCommandCode);
+        // fprintf(fileSource, "%d\n", newCommandCode);
 
-        // if (fwrite(&newCommandCode, sizeof(uint8_t), 1, fileSource) != 1) return ERR_ASM;
+        if (fwrite(&newCommandCode, sizeof(int32_t), 1, fileSource) != 1) return ERR_ASM;
         
         return ERR_OK;
 
@@ -216,13 +216,13 @@ err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, int ne
 
     if (args == 2) {  // real command with one argument
 
-        // if (fwrite(&newCommandCode, sizeof(uint8_t), 1, fileSource) != 1) return ERR_ASM;
+        if (fwrite(&newCommandCode, sizeof(int32_t), 1, fileSource) != 1) return ERR_ASM;
 
         int32_t argument = (int32_t)newElem;
 
-        // if (fwrite(&argument, sizeof(int32_t), 1, fileSource) != 1) return ERR_ASM;
+        if (fwrite(&argument, sizeof(int32_t), 1, fileSource) != 1) return ERR_ASM;
 
-        fprintf(fileSource, "%d\t%d\n", newCommandCode, newElem);
+        // fprintf(fileSource, "%d\t%d\n", newCommandCode, newElem);
         return ERR_OK;
 
     }
@@ -232,7 +232,7 @@ err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, int ne
 }
 
 err_t GetCodeArguments(FileStat * fAsmSource, size_t * count, int i, int * nArgs,
-                                                int * newElem, uint8_t * newCommandCode, Marks * label) {
+                                                int * newElem, int32_t * newCommandCode, Marks * label) {
 
     // buffer overflow protect
     if (fAsmSource->index->length > MAX_COMMAND_LEN) return ERR_OVERFLOW;
@@ -369,7 +369,7 @@ err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFil
 
 }
 
-err_t GetCommandCode(Marks * label, const char * command, size_t commandSize, uint8_t * commandCode, 
+err_t GetCommandCode(Marks * label, const char * command, size_t commandSize, int32_t * commandCode, 
                                            const char * arg, size_t argSize, int * newValue) {
 
     ASSERT(label);
@@ -560,7 +560,7 @@ err_t GetCommandCode(Marks * label, const char * command, size_t commandSize, ui
     return ERR_INTPR;
 }
 
-err_t WriteJumpMark(Marks * label, const char * arg, int * newValue, uint8_t * commandCode) {
+err_t WriteJumpMark(Marks * label, const char * arg, int * newValue, int32_t * commandCode) {
 
     err_t markStat = WriteMarkIndex(label, arg, newValue);
 

@@ -16,7 +16,7 @@ struct StringInfo {
 
 //! All used file information
 struct FileStat {
-    char * text_ptr = NULL;
+    void * text_ptr = NULL;
     StringInfo * index;
     off_t sizeInBytes = 0;
     size_t nLines = 0;
