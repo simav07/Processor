@@ -8,6 +8,8 @@
 struct VM_resource {
 
     stack_t stack = {};
+
+    FILE * fileDump = NULL;
     
     int * byteCode = NULL;
     size_t byteCodeLen = 0;
@@ -31,11 +33,14 @@ static const char * FILE_STACKDUMP = "dump.txt";
 
 void VmDump(FILE * stream, VM_resource * virtualMachine, size_t upCode);
 
-err_t GetBCfilenameStd(int argc, char * argv[], char * readFromFile);
+err_t VmCtor(const int argc, const char * argv[], VM_resource * virtualMachine);
+void VmDtor(VM_resource * virtualMachine);
+
+err_t GetBCfilenameStd(const int argc, const char * argv[], char * readFromFile);
 
 //! Main virtual machine
 err_t RunVirtualMachine(VM_resource * virtualMachine);
-err_t PrepareByteCode(VM_resource * virtualMachine, const int argc, char * argv[]);
+err_t PrepareByteCode(VM_resource * virtualMachine, const int argc, const char * argv[]);
 
 //! Fill byte code buffer from txt
 size_t GetByteCode(int ** byteCode, const char * byteCodeFilename);
@@ -72,16 +77,15 @@ err_t Ret(VM_resource * virtualMachine, size_t * upCode);
 err_t OutCom(VM_resource * virtualMachine, size_t * upCode);
 // -------------------------------------------------------------------
 
-int main(const int argc, /*const?*/ char * argv[]) {
+int main(const int argc, const char * argv[]) {
 
     printf("\nFile <%s>, [%s]\n", __FILE__, __TIME__);
 
     VM_resource virtualMachine = {};
     
     // constructor de facto 
-    err_t preparingStat = PrepareByteCode(&virtualMachine, argc, argv);
-
-    if (preparingStat != ERR_OK) {
+    err_t ctorStat = VmCtor(argc, argv, &virtualMachine);
+    if (ctorStat != ERR_OK) {
         // error description
         printf("ERROR OF MAKING BYTE CODE\n");
         return false;
@@ -95,17 +99,61 @@ int main(const int argc, /*const?*/ char * argv[]) {
         return false;
     }
 
-//TODO ////////////////////// destructor mother fucker//////////////////////////
+    VmDtor(&virtualMachine);
 
     return true;
 }
 
-err_t PrepareByteCode(VM_resource * virtualMachine, const int argc, char * argv[]) {
+err_t VmCtor(const int argc, const char * argv[], VM_resource * virtualMachine) {
+
+    ASSERT(argv);
+    ASSERT(virtualMachine);
+
+    virtualMachine->pc = 0;
+
+    // constructor de facto 
+    err_t preparingStat = PrepareByteCode(virtualMachine, argc, argv);
+
+    if (preparingStat != ERR_OK) {
+        // error description
+        printf("ERROR OF MAKING BYTE CODE\n");
+        return ERR_VM_CTOR;
+    }
+
+    virtualMachine->pc = 0; // mother fucker what is it
+
+    int ctorStat1 = StackCtor(&(virtualMachine->stack), 10); // mother fucker its constructor
+    if (ctorStat1 != ERR_OK) return ERR_VM_CTOR;
+
+    int ctorStat2 = StackCtor(&(virtualMachine->funcStack), 10); // mother fucker its constructor
+    if (ctorStat2 != ERR_OK) return ERR_VM_CTOR;
+
+    virtualMachine->fileDump = fopen(FILE_STACKDUMP, "w"); // mother fucker its constructor
+    if (!virtualMachine->fileDump) return ERR_FILEOPEN;
+
+    return ERR_OK;
+
+}
+
+void VmDtor(VM_resource * virtualMachine) {
+
+    ASSERT(virtualMachine);
+    ASSERT(&virtualMachine->funcStack);
+    ASSERT(&virtualMachine->stack);
+
+    fclose(virtualMachine->fileDump);
+
+    StackDtor(&(virtualMachine->funcStack));
+    StackDtor(&(virtualMachine->stack));
+
+}
+
+err_t PrepareByteCode(VM_resource * virtualMachine, const int argc, const char * argv[]) {
 
     ASSERT(virtualMachine);
     ASSERT(argv);
 
-    char byteCodeFile[100] = "";// why =(
+    char byteCodeFile[100] = "";
 
     int filenamesStat = GetBCfilenameStd(argc, argv, byteCodeFile);
     if (filenamesStat != ERR_OK) {
@@ -131,42 +179,30 @@ err_t RunVirtualMachine(VM_resource * virtualMachine) {
     ASSERT(virtualMachine);
     ASSERT(virtualMachine->byteCode);
 
-    virtualMachine->pc = 0; // mother fucker what is it
-
-    int ctorStat1 = StackCtor(&(virtualMachine->stack), 10); // mother fucker its constructor
-    if (ctorStat1 != ERR_OK) return ERR_CTOR;
-
-    int ctorStat2 = StackCtor(&(virtualMachine->funcStack), 10); // mother fucker its constructor
-    if (ctorStat2 != ERR_OK) return ERR_CTOR;
-
-    FILE * file_p = fopen(FILE_STACKDUMP, "w"); // mother fucker its constructor
-    if (!file_p) return ERR_FILEOPEN;
-
-    while (true) {
+    while (virtualMachine->byteCode[virtualMachine->pc] != HLT_C) {
 
         if (virtualMachine->pc >= virtualMachine->byteCodeLen) {
 
             printf(BOLD_RED "In asm file no HLT command\n" RESET); // destructor
             
-            fclose(file_p);
-            
-            StackDtor(&(virtualMachine->funcStack));
-            StackDtor(&(virtualMachine->stack));
+            VmDtor(virtualMachine);
+
             return ERR_PROCESSING;
         }
 
-        if (virtualMachine->byteCode[virtualMachine->pc] == HLT_C) break;
+        // if (virtualMachine->byteCode[virtualMachine->pc] == HLT_C) break;
 
         virtualMachine->pcChanged = false;
         size_t upCode = 1;
         err_t interpreterStat = Interpreter(virtualMachine, &upCode);
 
         if (interpreterStat != ERR_OK) {
+
             printf(RED "ERROR_PROCESSING: command at pc=%zu, error=%d\n" RESET,
-                   virtualMachine->pc, interpreterStat);
-            fclose(file_p);
-            StackDtor(&(virtualMachine->funcStack));
-            StackDtor(&(virtualMachine->stack));
+                                                virtualMachine->pc, interpreterStat);
+            
+            VmDtor(virtualMachine);
+            
             return interpreterStat;
         }
 
@@ -179,11 +215,6 @@ err_t RunVirtualMachine(VM_resource * virtualMachine) {
             virtualMachine->pc = virtualMachine->pc + upCode;
         }
     }
-
-    fclose(file_p); // mother fucker its destructor
-
-    StackDtor(&(virtualMachine->funcStack)); // mother fucker its destructor
-    StackDtor(&(virtualMachine->stack)); // mother fucker its destructor
 
     return ERR_OK;
 }
@@ -718,18 +749,17 @@ void VmDump(FILE * stream, VM_resource * virtualMachine, size_t upCode) {
 }
 
 // IO functions ----------------------------------------------------
-err_t GetBCfilenameStd(int argc, char * argv[], char * readFromFile) { // argv parser 
+err_t GetBCfilenameStd(const int argc, const char * argv[], char * readFromFile) { // argv parser 
 
     ASSERT(argv);
-    ASSERT(readFromFile);
 
     if ((argc == 3) && (!strcmp(argv[1], CMD_FLAG_BYTECODE))) {
 
-        if (!argv[2]) return ERR_FILEOPEN;
+        ASSERT(argv[2]);
 
         //! User put bytecode filename, so processor must use this bytecode
         size_t len = strlen(argv[2]);
-        memcpy(readFromFile, argv[2], len + 1);  // +1 for '\0' // extra action 
+        memcpy(readFromFile, argv[2], len + 1);
 
         printf(YELLOW "Executable file: <%s>\n" RESET, argv[2]);
 

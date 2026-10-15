@@ -38,19 +38,6 @@ struct Argument {
     size_t argSize;
 };
 
-/*
-struct AsmFilesInfo {
-    char * readFrom = NULL;
-    char * writeTo  = NULL;
-};
-
-struct Marks {
-    int Label[1000] = {0};
-    size_t nMark  = 0;
-}; */
-
-// struct Assembler
-
 //! Flag for user's filename of asm source
 const char * CMD_FLAG_ASM = "--asmsource";
 //! Flag for user's filename of byte code
