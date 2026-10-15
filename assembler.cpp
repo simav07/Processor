@@ -13,16 +13,43 @@ typedef int err_t;
 #include "./include/commands.h"
 #include "hashcommands.h"
 
+struct Marks {
+    int Label[20] = {0};
+    size_t nMark  = 0;
+};
+
+struct Assembler {
+    char * readFrom = NULL;
+    char * writeTo  = NULL;
+
+    FileStat fAsmSource = {};
+
+    Marks label = {};
+
+};
+
+struct Command {
+    char * commandPtr;
+    size_t commandSize;
+};
+
+struct Argument {
+    char * argPtr;
+    size_t argSize;
+};
+
+/*
 struct AsmFilesInfo {
     char * readFrom = NULL;
     char * writeTo  = NULL;
 };
 
 struct Marks {
-    int Label[20] = {0};
+    int Label[1000] = {0};
     size_t nMark  = 0;
-};
+}; */
 
+// struct Assembler
 
 //! Flag for user's filename of asm source
 const char * CMD_FLAG_ASM = "--asmsource";
@@ -43,40 +70,47 @@ const int POISON_VALUE = INT32_MAX;
 //! Functions for ASSEMBLER
 //! -------------------------------------------------------------------------
 
-err_t GetAsmFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo);
+err_t AsmCtor(const int argc, const char * argv[], Assembler * assembler);
 
-err_t Assemble(const char * asmSourceName, const char * byteCodeName);
+err_t GetAsmFilenameStd(const int argc, const char * argv[], Assembler * fileInfo);
 
-err_t GetCommandCode(Marks * label, const char * command, size_t commandSize, int32_t * commandCode, 
-                                           const char * arg, size_t argSize, int * newValue);
-int GetRegCode(const char * arg2, size_t arg2Len);
+err_t Assemble(Assembler * assembler);
+                                    // mother fucker struct <...>
+err_t GetCommandCode(Marks * label, Command * command, int32_t * commandCode,
+                                  Argument * argument, int32_t * newValue);
+int GetRegCode(Argument * arg2);
 
 err_t WriteJumpMark(Marks * label, const char * arg, int * newValue, int32_t * commandCode);
 err_t MakeMark(Marks * label, const char * arg1, const size_t currIndex);
 err_t WriteMarkIndex(Marks * label, const char * arg2, int * newValue);
 
 //! Write commands to the file with byte code
-err_t WriteHashCom(const char * source, const char * commandsFile);
 size_t DjbHash(const void * data, size_t size);
 
 err_t WriteArguments(FILE * fileSource, int args, int32_t newCommandCode, int newElem);
 err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const char * byteCodeName);
-err_t GetCodeArguments(FileStat * fAsmSource, size_t * count, int i, int * nArgs,
-                                                     int * newElem, int32_t * newCommandCode, Marks * label);
-//int CheckSecondArg(const char * arg2, size_t arg2Len);
+err_t GetCodeArguments(Assembler * assembler, size_t * count, int i, int * nArgs,
+                                              int32_t * newElem, int32_t * newCommandCode);
 
 err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile);
 
-int main(const int argc, char * argv[]) {
+int main(const int argc, const  char * argv[]) {
 
     printf("\nFile <%s>, [%s]\n", __FILE__, __TIME__);
 
-    AsmFilesInfo asmInfo = {};
+    FileStat fAsmSource = {};
 
-    int filenamesStat = GetAsmFilenameStd(argc, argv, &asmInfo);
+    Assembler assembler = {};
+
+    int ctorStat = AsmCtor(argc, argv, &assembler);
+    if (ctorStat != ERR_OK) {
+        // err description
+        printf("Error from constructor\n");
+        return false;
+    }
 
     //! Asm source -> byte code
-    int asmStat = Assemble(asmInfo.readFrom, asmInfo.writeTo);
+    int asmStat = Assemble(&assembler);
 
     if (asmStat != ERR_OK) {
         // error description
@@ -84,18 +118,36 @@ int main(const int argc, char * argv[]) {
         return ERR_ASM;
     }
 
-    // if (strcmp(asmInfo.readFrom, USER_ASM_SOURCE_FILE) != 0) ASSERT(0);
-
     printf(BOLD_GREEN "Successful assembling.\n" RESET);
-    printf(YELLOW "File with bytecode: <%s>\n" RESET, asmInfo.writeTo);
+    printf(YELLOW "File with bytecode: <%s>\n" RESET, assembler.writeTo);
     
     return true;
 }
 
-err_t GetAsmFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo) {
+err_t AsmCtor(const int argc, const char * argv[], Assembler * assembler) {
+
+    ASSERT(argv);
+    ASSERT(assembler);
+
+    if (!GetAsmFilenameStd(argc, argv, assembler)) return ERR_ASM_CTOR;
+
+    // FileStat fAsmSource = {};
+
+    err_t prepareAsmStat = PrepareAsmSource(&(assembler->fAsmSource), assembler->readFrom, assembler->writeTo);
+    if (prepareAsmStat != ERR_OK) {
+        printf("Error of reading asm source\n");
+        return ERR_ASM_CTOR;
+    }
+
+    return ERR_OK;
+
+}
+
+err_t GetAsmFilenameStd(const int argc, const char * argv[], Assembler * fileInfo) {
 
     ASSERT(argv);
     ASSERT(*argv);
+    ASSERT(fileInfo);
 
     // add more if
     if (((argc == 3) || (argc == 5)) && (!strcmp(argv[1], CMD_FLAG_ASM))) {
@@ -104,11 +156,11 @@ err_t GetAsmFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo) {
 
         //! User put asm filename, so assembler must make a bytecode
 
-        (*fileInfo).readFrom = argv[2];
+        (*fileInfo).readFrom = (char *)argv[2];
 
         //! User's filename
         if ((argc == 5) && !strcmp(argv[3], CMD_FLAG_BC)) {
-            (*fileInfo).writeTo  = argv[4];
+            (*fileInfo).writeTo = (char *)argv[4];
             return true;
         }
 
@@ -122,40 +174,30 @@ err_t GetAsmFilenameStd(int argc, char * argv[], AsmFilesInfo * fileInfo) {
     return false;
 }
 
-err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
+err_t Assemble(Assembler * assembler) {
 
-    ASSERT(asmSourceName);
-    ASSERT(byteCodeName);
-    ASSERT((byteCodeName != asmSourceName));
-
-    FileStat fAsmSource = {};
-
-    Marks Label = {};
-
-    err_t prepareAsmStat = PrepareAsmSource(&fAsmSource, asmSourceName, byteCodeName);
-    if (prepareAsmStat != ERR_OK) {
-        printf("Error of reading asm source\n");
-        return ERR_ASM;
-    }
-
+    ASSERT(assembler);
+    
     for (int i = 0; i < 2; i++) {
+
+    FILE * byteCodeFile  = fopen(assembler->writeTo, "wb");
 
     printf(YELLOW "%d step of assembling...\n" RESET, i + 1);
 
-    FILE * byteCodeFile  = fopen(byteCodeName, "wb");
-
     size_t count = 0;
 
-    for (size_t i = 0; i < fAsmSource.nLines; i++) {
+    for (size_t i = 0; i < (assembler->fAsmSource).nLines; i++) {
 
-        if (fAsmSource.index->length > MAX_COMMAND_LEN) return ERR_OVERFLOW; //! overflow protect
+        if ((assembler->fAsmSource).index->length > MAX_COMMAND_LEN) return ERR_OVERFLOW; //! overflow protect
+        
         char command[MAX_COMMAND_LEN] = "";
-        int newElem = 0;
+        int32_t newElem = 0;
+
         int nArgs = 0;
 
-        int32_t newCommandCode = 0;
+        int32_t newCommandCode = 0; // uint8_t
 
-        err_t getArgStat = GetCodeArguments(&fAsmSource, &count, i, &nArgs, &newElem, &newCommandCode, &Label);
+        err_t getArgStat = GetCodeArguments(assembler, &count, i, &nArgs, &newElem, &newCommandCode);
         if (getArgStat != ERR_OK) {
             printf("Error of getting args\n");
             return ERR_INTPR;
@@ -168,7 +210,6 @@ err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
         }
 
     }
-    fclose(byteCodeFile);
 
     #ifdef MARKDUMP
     printf("\nLABEL WITH MARKS: \n");
@@ -178,7 +219,9 @@ err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
     printf("\n");
     #endif
 
+    fclose(byteCodeFile);
     }
+
 
     return ERR_OK;
 }
@@ -186,6 +229,8 @@ err_t Assemble(const char * asmSourceName, const char * byteCodeName) {
 err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const char * byteCodeName) {
 
     ASSERT(fAsmSource);
+    ASSERT(asmSourceName);
+    ASSERT(byteCodeName);
 
     int * asmSource = NULL;
     int getAsmStat = FGetInfoBuffer(asmSourceName, &asmSource, fAsmSource);
@@ -231,23 +276,25 @@ err_t WriteArguments(FILE * fileSource, int args, int32_t newCommandCode, int ne
 
 }
 
-err_t GetCodeArguments(FileStat * fAsmSource, size_t * count, int i, int * nArgs,
-                                                int * newElem, int32_t * newCommandCode, Marks * label) {
+err_t GetCodeArguments(Assembler * assembler, size_t * count, int i, int * nArgs,
+                                              int32_t * newElem, int32_t * newCommandCode) {
+    ASSERT(assembler);
+    ASSERT(count);
 
     // buffer overflow protect
-    if (fAsmSource->index->length > MAX_COMMAND_LEN) return ERR_OVERFLOW;
+    if (assembler->fAsmSource.index->length > MAX_COMMAND_LEN) return ERR_OVERFLOW;
 
     char arg1[MAX_COMMAND_LEN] = "";
     char arg2[MAX_COMMAND_LEN] = "";
 
-    *nArgs = sscanf(fAsmSource->index[i].index, "%s %s", arg1, arg2);
+    *nArgs = sscanf(assembler->fAsmSource.index[i].index, "%s %s", arg1, arg2);
 
     if (*nArgs != 1 && *nArgs != 2) return ERR_COMMAND;
 
     // Write a mark to the label
     if (arg1[0] == ':') {
 
-        err_t makeMarkStat = MakeMark(label, arg1, *count);
+        err_t makeMarkStat = MakeMark(&(assembler->label), arg1, *count);
         if (makeMarkStat != ERR_OK) {
             printf("Make mark error\n");
             return ERR_ASM;
@@ -260,13 +307,15 @@ err_t GetCodeArguments(FileStat * fAsmSource, size_t * count, int i, int * nArgs
 
     *count += *nArgs;
 
-    err_t interpreterStat = GetCommandCode(label, arg1, strlen(arg1),
-                            newCommandCode, arg2, strlen(arg2), newElem);
+    Command command   = {.commandPtr = arg1, .commandSize = strlen(arg1)};
+    Argument argument = {.argPtr = arg2, .argSize = strlen(arg2)};
+
+    err_t interpreterStat = GetCommandCode(&(assembler->label), &command, newCommandCode, &argument, newElem);
 
     if (interpreterStat != ERR_OK) {
     
         printf(BOLD_RED "Translation error: file <%s>, line %d\n"
-                        "Incorrect command\n" RESET, fAsmSource->readFrom, i + 1);
+                        "Incorrect command\n" RESET, assembler->fAsmSource.readFrom, i + 1);
         return ERR_INTPR;
     
     }
@@ -275,9 +324,11 @@ err_t GetCodeArguments(FileStat * fAsmSource, size_t * count, int i, int * nArgs
 
 }
 
-int GetRegCode(const char * arg2, size_t arg2Len) {
+int GetRegCode(Argument * arg2) {
 
-    size_t hashReg = DjbHash(arg2, arg2Len);
+    ASSERT(arg2);
+
+    size_t hashReg = DjbHash(arg2->argPtr, arg2->argSize);
 
     switch (hashReg)
     {
@@ -369,33 +420,34 @@ err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFil
 
 }
 
-err_t GetCommandCode(Marks * label, const char * command, size_t commandSize, int32_t * commandCode, 
-                                           const char * arg, size_t argSize, int * newValue) {
+err_t GetCommandCode(Marks * label, Command * command, int32_t * commandCode, 
+                                    Argument * argument, int32_t * newValue) {
 
     ASSERT(label);
     ASSERT(command);
     ASSERT(commandCode);
-    ASSERT(arg);
+    ASSERT(argument);
+    ASSERT(newValue);
 
-    size_t hashCommand = DjbHash((const void *)command, commandSize);
+    size_t hashCommand = DjbHash((const void *)(command->commandPtr), command->commandSize);
 
     switch(hashCommand) {
 
     case (HASH_PUSH): {
-        if (strcmp(command, "PUSH") != 0) return ERR_INTPR;
+        if (strcmp(command->commandPtr, "PUSH") != 0) return ERR_INTPR;
         
-        if (!isalpha(arg[0])) {
+        if (!isalpha(argument->argPtr[0])) {
             *commandCode = PUSH_C;
             char * checkPtr;
-            *newValue = strtod(arg, &checkPtr);
-            if (arg == checkPtr) {
+            *newValue = strtod(argument->argPtr, &checkPtr);
+            if (argument->argPtr == checkPtr) {
                 printf("Error of reading a number\n");
                 return ERR_SYNTAX;
             }
             return ERR_OK;
         }
 
-        int getRegCodeStat = GetRegCode(arg, argSize);
+        int getRegCodeStat = GetRegCode(argument);
 
         *commandCode = PUSH_R;
         
@@ -407,9 +459,9 @@ err_t GetCommandCode(Marks * label, const char * command, size_t commandSize, in
     }
 
     case (HASH_POP): {
-        if (strcmp(command, "POP") != 0) return ERR_INTPR;
+        if (strcmp(command->commandPtr, "POP") != 0) return ERR_INTPR;
 
-        int getRegCodeStat = GetRegCode(arg, argSize);
+        int getRegCodeStat = GetRegCode(argument);
 
         *commandCode = POP_R;
         
@@ -422,9 +474,9 @@ err_t GetCommandCode(Marks * label, const char * command, size_t commandSize, in
 
     case (HASH_CALL): {
 
-        if (strcmp(command, "CALL") != 0) return ERR_INTPR;
+        if (strcmp(command->commandPtr, "CALL") != 0) return ERR_INTPR;
 
-        err_t markStat = WriteMarkIndex(label, arg, newValue);
+        err_t markStat = WriteMarkIndex(label, argument->argPtr, newValue);
 
         if (markStat == ERR_SKIP_ARG) {
             *commandCode = SKIP_STEP;
@@ -441,7 +493,7 @@ err_t GetCommandCode(Marks * label, const char * command, size_t commandSize, in
 
     case (HASH_RET): {
 
-        if (strcmp(command, "RET") != 0) return ERR_INTPR;
+        if (strcmp(command->commandPtr, "RET") != 0) return ERR_INTPR;
 
         *commandCode = RET_C;
 
@@ -451,9 +503,9 @@ err_t GetCommandCode(Marks * label, const char * command, size_t commandSize, in
 
     case (HASH_JUMP): {
 
-        if (strcmp(command, "JUMP") != 0) return ERR_INTPR;
+        if (strcmp(command->commandPtr, "JUMP") != 0) return ERR_INTPR;
 
-        err_t markStat = WriteMarkIndex(label, arg, newValue);
+        err_t markStat = WriteMarkIndex(label, argument->argPtr, newValue);
 
         if (markStat == ERR_SKIP_ARG) {
             *commandCode = SKIP_STEP;
@@ -468,88 +520,88 @@ err_t GetCommandCode(Marks * label, const char * command, size_t commandSize, in
     }
 
     case (HASH_JA): {
-        if (strcmp(command, "JA") != 0) return ERR_INTPR;
+        if (strcmp(command->commandPtr, "JA") != 0) return ERR_INTPR;
 
         *commandCode = JA_C;
 
-        return WriteJumpMark(label, arg, newValue, commandCode);
+        return WriteJumpMark(label, argument->argPtr, newValue, commandCode);
 
     }
 
     case (HASH_JAE): {
-        if (strcmp(command, "JAE") != 0) return ERR_INTPR;
+        if (strcmp(command->commandPtr, "JAE") != 0) return ERR_INTPR;
 
         *commandCode = JAE_C;
-        return WriteJumpMark(label, arg, newValue, commandCode);
+        return WriteJumpMark(label, argument->argPtr, newValue, commandCode);
 
     }
 
     case (HASH_JB): {
-        if (strcmp(command, "JB") != 0) return ERR_INTPR;
+        if (strcmp(command->commandPtr, "JB") != 0) return ERR_INTPR;
 
         *commandCode = JB_C;
-        return WriteJumpMark(label, arg, newValue, commandCode);
+        return WriteJumpMark(label, argument->argPtr, newValue, commandCode);
 
     }
 
     case (HASH_JBE): {
-        if (strcmp(command, "JBE") != 0) return ERR_INTPR;
+        if (strcmp(command->commandPtr, "JBE") != 0) return ERR_INTPR;
 
         *commandCode = JBE_C;
-        return WriteJumpMark(label, arg, newValue, commandCode);
+        return WriteJumpMark(label, argument->argPtr, newValue, commandCode);
 
     }
 
     case (HASH_JE): {
-        if (strcmp(command, "JE") != 0) return ERR_INTPR;
+        if (strcmp(command->commandPtr, "JE") != 0) return ERR_INTPR;
 
         *commandCode = JE_C;
-        return WriteJumpMark(label, arg, newValue, commandCode);
+        return WriteJumpMark(label, argument->argPtr, newValue, commandCode);
 
     }
 
     case (HASH_JNE): {
-        if (strcmp(command, "JNE") != 0) return ERR_INTPR;
+        if (strcmp(command->commandPtr, "JNE") != 0) return ERR_INTPR;
 
         *commandCode = JNE_C;
-        return WriteJumpMark(label, arg, newValue, commandCode);
+        return WriteJumpMark(label, argument->argPtr, newValue, commandCode);
 
     }
 
     case (HASH_IN): {
-        if (strcmp(command, "IN") != 0) return ERR_INTPR;
+        if (strcmp(command->commandPtr, "IN") != 0) return ERR_INTPR;
 
         *commandCode = IN_C;
         return ERR_OK;
     }
 
     case (HASH_ADD): {
-        if (strcmp(command, "ADD") != 0) return ERR_INTPR;
+        if (strcmp(command->commandPtr, "ADD") != 0) return ERR_INTPR;
         *commandCode = ADD_C;
         return ERR_OK;
     }
     case (HASH_SUB):
-        if (strcmp(command, "SUB") != 0) return ERR_INTPR;
+        if (strcmp(command->commandPtr, "SUB") != 0) return ERR_INTPR;
         *commandCode = SUB_C;
         return ERR_OK;
 
     case (HASH_DIV):
-        if (strcmp(command, "DIV") != 0) return ERR_INTPR;
+        if (strcmp(command->commandPtr, "DIV") != 0) return ERR_INTPR;
         *commandCode = DIV_C;
         return ERR_OK;
 
     case (HASH_OUT):
-        if (strcmp(command, "OUT") != 0) return ERR_INTPR;
+        if (strcmp(command->commandPtr, "OUT") != 0) return ERR_INTPR;
         *commandCode = OUT_C;
         return ERR_OK;
     
     case (HASH_HLT):
-        if (strcmp(command, "HLT") != 0) return ERR_INTPR;
+        if (strcmp(command->commandPtr, "HLT") != 0) return ERR_INTPR;
         *commandCode = HLT_C;
         return ERR_OK;
 
     case (HASH_MUL):
-        if (strcmp(command, "MUL") != 0) return ERR_INTPR;
+        if (strcmp(command->commandPtr, "MUL") != 0) return ERR_INTPR;
         *commandCode = MUL_C;
         return ERR_OK;
 
