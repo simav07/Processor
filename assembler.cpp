@@ -59,7 +59,7 @@ const int POISON_VALUE = INT32_MAX;
 
 err_t AsmCtor(const int argc, const char * argv[], Assembler * assembler);
 
-err_t GetAsmFilenameStd(const int argc, const char * argv[], Assembler * fileInfo);
+err_t ArgvParser(const int argc, const char * argv[], Assembler * fileInfo);
 
 err_t Assemble(Assembler * assembler);
 
@@ -116,7 +116,7 @@ err_t AsmCtor(const int argc, const char * argv[], Assembler * assembler) {
     ASSERT(argv);
     ASSERT(assembler);
 
-    if (!GetAsmFilenameStd(argc, argv, assembler)) return ERR_ASM_CTOR;
+    if (!ArgvParser(argc, argv, assembler)) return ERR_ASM_CTOR;
 
     err_t prepareAsmStat = PrepareAsmSource(&(assembler->fAsmSource), assembler->readFrom, assembler->writeTo);
     if (prepareAsmStat != ERR_OK) {
@@ -128,13 +128,12 @@ err_t AsmCtor(const int argc, const char * argv[], Assembler * assembler) {
 
 }
 
-err_t GetAsmFilenameStd(const int argc, const char * argv[], Assembler * fileInfo) {
+err_t ArgvParser(const int argc, const char * argv[], Assembler * fileInfo) {
 
     ASSERT(argv);
     ASSERT(*argv);
     ASSERT(fileInfo);
 
-    // add more if
     if (((argc == 3) || (argc == 5)) && (!strcmp(argv[1], CMD_FLAG_ASM))) {
 
         if (!argv[2]) return false;
@@ -232,7 +231,7 @@ err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, int32_
 
     ASSERT(fileSource);
 
-    if (newCommandCode == SKIP_STEP) return ERR_OK;
+    if (newCommandCode == SKIP_STEP || args <= 0) return ERR_OK;
 
     if (args != 1 && args != 2) {
         return ERR_ASM;
@@ -273,7 +272,15 @@ err_t GetCodeArguments(Assembler * assembler, size_t * count, int i, int * nArgs
 
     *nArgs = sscanf(assembler->fAsmSource.index[i].index, "%s %s", arg1, arg2);
 
+    if (*nArgs <= 0) return ERR_OK;
+
     if (*nArgs != 1 && *nArgs != 2) return ERR_COMMAND;
+
+    //! Comments
+    if (arg1[0] == ';') {
+        *newCommandCode = SKIP_STEP;
+        return ERR_OK;
+    }
 
     // Write a mark to the label
     if (arg1[0] == ':') {
@@ -360,6 +367,8 @@ err_t MakeMark(Marks * label, const char * arg1, const size_t currIndex) {
 }
 
 err_t WriteMarkIndex(Marks * label, const char * arg2, int * newValue) {
+
+    // -------------- TODO ------------- GetLabel, SetLabel
 
     ASSERT(label);
     ASSERT(arg2);
