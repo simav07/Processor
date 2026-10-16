@@ -3,9 +3,7 @@
 #include "include/commands.h"
 #include "hashcommands.h"
 
-// mother fucker naming 
-//     VirtualMachine
-struct VM_resource {
+struct vmResource {
 
     stack_t stack = {};
 
@@ -31,57 +29,57 @@ static const char * CMD_FLAG_BYTECODE = "--bytecode";
 //! File for StackDump, there we can see what happening with stack
 static const char * FILE_STACKDUMP = "dump.txt";
 
-void VmDump(FILE * stream, VM_resource * virtualMachine, size_t upCode);
+void VmDump(FILE * stream, vmResource * virtualMachine, size_t upCode);
 
-err_t VmCtor(const int argc, const char * argv[], VM_resource * virtualMachine);
-void VmDtor(VM_resource * virtualMachine);
+err_t VmCtor(const int argc, const char * argv[], vmResource * virtualMachine);
+void VmDtor(vmResource * virtualMachine);
 
-err_t GetBCfilenameStd(const int argc, const char * argv[], char * readFromFile);
+err_t ArgvParser(const int argc, const char * argv[], char * readFromFile);
 
 //! Main virtual machine
-err_t RunVirtualMachine(VM_resource * virtualMachine);
-err_t PrepareByteCode(VM_resource * virtualMachine, const int argc, const char * argv[]);
+err_t RunVirtualMachine(vmResource * virtualMachine);
+err_t PrepareByteCode(vmResource * virtualMachine, const int argc, const char * argv[]);
 
 //! Fill byte code buffer from txt
 size_t GetByteCode(int ** byteCode, const char * byteCodeFilename);
 
 //! Interpreter: run commands
-err_t Interpreter(VM_resource * virtualMachine, size_t * upCode);
+err_t Interpreter(vmResource * virtualMachine, size_t * upCode);
 
 //! Commands for virtual machine -------------------------------------
-err_t PushCom(VM_resource * virtualMachine, size_t * upCode);
+err_t PushCom(vmResource * virtualMachine, size_t * upCode);
 
 err_t GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b);
 
-err_t PopR(VM_resource * virtualMachine, size_t * upCode);
-err_t PushR(VM_resource * virtualMachine, size_t * upCode); // change to enum
+err_t PopR(vmResource * virtualMachine, size_t * upCode);
+err_t PushR(vmResource * virtualMachine, size_t * upCode);
 
-err_t Jump(VM_resource * virtualMachine, size_t jumpIndex);
-err_t JA(VM_resource * virtualMachine, size_t * upCode);
-err_t JAE(VM_resource * virtualMachine, size_t * upCode);
-err_t JB(VM_resource * virtualMachine, size_t * upCode);
-err_t JBE(VM_resource * virtualMachine, size_t * upCode);
-err_t JE(VM_resource * virtualMachine, size_t * upCode);
-err_t JNE(VM_resource * virtualMachine, size_t * upCode);
+err_t Jump(vmResource * virtualMachine, size_t jumpIndex);
+err_t JA(vmResource * virtualMachine, size_t * upCode);
+err_t JAE(vmResource * virtualMachine, size_t * upCode);
+err_t JB(vmResource * virtualMachine, size_t * upCode);
+err_t JBE(vmResource * virtualMachine, size_t * upCode);
+err_t JE(vmResource * virtualMachine, size_t * upCode);
+err_t JNE(vmResource * virtualMachine, size_t * upCode);
 
-err_t IN(VM_resource * virtualMachine, size_t * upCode);
+err_t IN(vmResource * virtualMachine, size_t * upCode);
 
-err_t AddCom(VM_resource * virtualMachine, size_t * upCode);
-err_t SubCom(VM_resource * virtualMachine, size_t * upCode);
-err_t DivCom(VM_resource * virtualMachine, size_t * upCode);
-err_t MulCom(VM_resource * virtualMachine, size_t * upCode);
+err_t AddCom(vmResource * virtualMachine, size_t * upCode);
+err_t SubCom(vmResource * virtualMachine, size_t * upCode);
+err_t DivCom(vmResource * virtualMachine, size_t * upCode);
+err_t MulCom(vmResource * virtualMachine, size_t * upCode);
 
-err_t Call(VM_resource * virtualMachine, size_t * upCode);
-err_t Ret(VM_resource * virtualMachine, size_t * upCode);
+err_t Call(vmResource * virtualMachine, size_t * upCode);
+err_t Ret(vmResource * virtualMachine, size_t * upCode);
 
-err_t OutCom(VM_resource * virtualMachine, size_t * upCode);
+err_t OutCom(vmResource * virtualMachine, size_t * upCode);
 // -------------------------------------------------------------------
 
 int main(const int argc, const char * argv[]) {
 
     printf("\nFile <%s>, [%s]\n", __FILE__, __TIME__);
 
-    VM_resource virtualMachine = {};
+    vmResource virtualMachine = {};
     
     // constructor de facto 
     err_t ctorStat = VmCtor(argc, argv, &virtualMachine);
@@ -104,7 +102,7 @@ int main(const int argc, const char * argv[]) {
     return true;
 }
 
-err_t VmCtor(const int argc, const char * argv[], VM_resource * virtualMachine) {
+err_t VmCtor(const int argc, const char * argv[], vmResource * virtualMachine) {
 
     ASSERT(argv);
     ASSERT(virtualMachine);
@@ -135,7 +133,7 @@ err_t VmCtor(const int argc, const char * argv[], VM_resource * virtualMachine) 
 
 }
 
-void VmDtor(VM_resource * virtualMachine) {
+void VmDtor(vmResource * virtualMachine) {
 
     ASSERT(virtualMachine);
     ASSERT(&virtualMachine->funcStack);
@@ -148,14 +146,14 @@ void VmDtor(VM_resource * virtualMachine) {
 
 }
 
-err_t PrepareByteCode(VM_resource * virtualMachine, const int argc, const char * argv[]) {
+err_t PrepareByteCode(vmResource * virtualMachine, const int argc, const char * argv[]) {
 
     ASSERT(virtualMachine);
     ASSERT(argv);
 
     char byteCodeFile[100] = "";
 
-    int filenamesStat = GetBCfilenameStd(argc, argv, byteCodeFile);
+    int filenamesStat = ArgvParser(argc, argv, byteCodeFile);
     if (filenamesStat != ERR_OK) {
         printf("Error of reading bytecode filename\n");
         return ERR_ASM;
@@ -174,7 +172,7 @@ err_t PrepareByteCode(VM_resource * virtualMachine, const int argc, const char *
 
 }
 
-err_t RunVirtualMachine(VM_resource * virtualMachine) {
+err_t RunVirtualMachine(vmResource * virtualMachine) {
 
     ASSERT(virtualMachine);
     ASSERT(virtualMachine->byteCode);
@@ -183,14 +181,12 @@ err_t RunVirtualMachine(VM_resource * virtualMachine) {
 
         if (virtualMachine->pc >= virtualMachine->byteCodeLen) {
 
-            printf(BOLD_RED "In asm file no HLT command\n" RESET); // destructor
+            printf(BOLD_RED "In asm file no HLT command\n" RESET);
             
             VmDtor(virtualMachine);
 
             return ERR_PROCESSING;
         }
-
-        // if (virtualMachine->byteCode[virtualMachine->pc] == HLT_C) break;
 
         virtualMachine->pcChanged = false;
         size_t upCode = 1;
@@ -219,7 +215,7 @@ err_t RunVirtualMachine(VM_resource * virtualMachine) {
     return ERR_OK;
 }
 
-err_t Interpreter(VM_resource * virtualMachine, size_t * upCode) {
+err_t Interpreter(vmResource * virtualMachine, size_t * upCode) {
 
     ASSERT(virtualMachine);
     ASSERT(upCode);
@@ -325,7 +321,7 @@ err_t Interpreter(VM_resource * virtualMachine, size_t * upCode) {
 // Functions for processor
 //------------------------------------------------------------------
 
-err_t PushCom(VM_resource * virtualMachine, size_t * upCode) {
+err_t PushCom(vmResource * virtualMachine, size_t * upCode) {
 
     ASSERT(virtualMachine);
     ASSERT(upCode);
@@ -339,7 +335,7 @@ err_t PushCom(VM_resource * virtualMachine, size_t * upCode) {
 
 }
 
-err_t PopR(VM_resource * virtualMachine, size_t * upCode) {
+err_t PopR(vmResource * virtualMachine, size_t * upCode) {
 
     ASSERT(virtualMachine);
     ASSERT(upCode);
@@ -358,7 +354,7 @@ err_t PopR(VM_resource * virtualMachine, size_t * upCode) {
     return ERR_OK;
 }
 
-err_t PushR(VM_resource * virtualMachine, size_t * upCode) {
+err_t PushR(vmResource * virtualMachine, size_t * upCode) {
 
     ASSERT(virtualMachine);
     ASSERT(upCode);
@@ -374,7 +370,7 @@ err_t PushR(VM_resource * virtualMachine, size_t * upCode) {
     return ERR_OK;
 }
 
-err_t Jump(VM_resource * virtualMachine, size_t jumpIndex) {
+err_t Jump(vmResource * virtualMachine, size_t jumpIndex) {
 
     ASSERT(virtualMachine);
 
@@ -387,7 +383,7 @@ err_t Jump(VM_resource * virtualMachine, size_t jumpIndex) {
 
 }
 
-err_t JA(VM_resource * virtualMachine, size_t * upCode) {
+err_t JA(vmResource * virtualMachine, size_t * upCode) {
 
     ASSERT(virtualMachine);
     ASSERT(upCode);
@@ -407,7 +403,7 @@ err_t JA(VM_resource * virtualMachine, size_t * upCode) {
     return ERR_OK;
 }
 
-err_t JAE(VM_resource * virtualMachine, size_t * upCode) {
+err_t JAE(vmResource * virtualMachine, size_t * upCode) {
 
     ASSERT(virtualMachine);
     ASSERT(upCode);
@@ -427,7 +423,7 @@ err_t JAE(VM_resource * virtualMachine, size_t * upCode) {
     return ERR_OK;
 }
 
-err_t JB(VM_resource * virtualMachine, size_t * upCode) {
+err_t JB(vmResource * virtualMachine, size_t * upCode) {
 
     ASSERT(virtualMachine);
     ASSERT(upCode);
@@ -447,7 +443,7 @@ err_t JB(VM_resource * virtualMachine, size_t * upCode) {
     return ERR_OK;
 }
 
-err_t JBE(VM_resource * virtualMachine, size_t * upCode) {
+err_t JBE(vmResource * virtualMachine, size_t * upCode) {
 
     ASSERT(virtualMachine);
     ASSERT(upCode);
@@ -467,7 +463,7 @@ err_t JBE(VM_resource * virtualMachine, size_t * upCode) {
     return ERR_OK;
 }
 
-err_t JE(VM_resource * virtualMachine, size_t * upCode) {
+err_t JE(vmResource * virtualMachine, size_t * upCode) {
 
     ASSERT(virtualMachine);
     ASSERT(upCode);
@@ -487,7 +483,7 @@ err_t JE(VM_resource * virtualMachine, size_t * upCode) {
     return ERR_OK;
 }
 
-err_t JNE(VM_resource * virtualMachine, size_t * upCode) {
+err_t JNE(vmResource * virtualMachine, size_t * upCode) {
 
     ASSERT(virtualMachine);
     ASSERT(upCode);
@@ -507,7 +503,7 @@ err_t JNE(VM_resource * virtualMachine, size_t * upCode) {
     return ERR_OK;
 }
 
-err_t IN(VM_resource * virtualMachine, size_t * upCode) {
+err_t IN(vmResource * virtualMachine, size_t * upCode) {
 
     ASSERT(virtualMachine);
     ASSERT(upCode);
@@ -528,7 +524,7 @@ err_t IN(VM_resource * virtualMachine, size_t * upCode) {
     return ERR_PROCESSING;
 }
 
-err_t Call(VM_resource * virtualMachine, size_t * upCode) {
+err_t Call(vmResource * virtualMachine, size_t * upCode) {
 
     ASSERT(virtualMachine);
     ASSERT(upCode);
@@ -540,7 +536,7 @@ err_t Call(VM_resource * virtualMachine, size_t * upCode) {
     return Jump(virtualMachine, (size_t)virtualMachine->byteCode[virtualMachine->pc + 1]);
 }
 
-err_t Ret(VM_resource * virtualMachine, size_t * upCode) {
+err_t Ret(vmResource * virtualMachine, size_t * upCode) {
 
     ASSERT(virtualMachine);
     ASSERT(upCode);
@@ -571,7 +567,7 @@ err_t GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b) {
     return ERR_OK;
 }
 
-err_t AddCom(VM_resource * virtualMachine, size_t * upCode) {
+err_t AddCom(vmResource * virtualMachine, size_t * upCode) {
 
     ASSERT(virtualMachine);
     ASSERT(upCode);
@@ -591,7 +587,7 @@ err_t AddCom(VM_resource * virtualMachine, size_t * upCode) {
     return ERR_OK;
 }
 
-err_t SubCom(VM_resource * virtualMachine, size_t * upCode) {
+err_t SubCom(vmResource * virtualMachine, size_t * upCode) {
 
     ASSERT(virtualMachine);
     ASSERT(upCode);
@@ -607,7 +603,7 @@ err_t SubCom(VM_resource * virtualMachine, size_t * upCode) {
     return ERR_OK;
 }
 
-err_t DivCom(VM_resource * virtualMachine, size_t * upCode) {
+err_t DivCom(vmResource * virtualMachine, size_t * upCode) {
 
     ASSERT(virtualMachine);
     ASSERT(upCode);
@@ -624,7 +620,7 @@ err_t DivCom(VM_resource * virtualMachine, size_t * upCode) {
     return ERR_OK;
 }
 
-err_t MulCom(VM_resource * virtualMachine, size_t * upCode) {
+err_t MulCom(vmResource * virtualMachine, size_t * upCode) {
 
     ASSERT(virtualMachine);
     ASSERT(upCode);
@@ -640,7 +636,7 @@ err_t MulCom(VM_resource * virtualMachine, size_t * upCode) {
     return ERR_OK;
 }
 
-err_t OutCom(VM_resource * virtualMachine, size_t * upCode) {
+err_t OutCom(vmResource * virtualMachine, size_t * upCode) {
 
     ASSERT(virtualMachine);
     ASSERT(upCode);
@@ -678,7 +674,7 @@ size_t GetByteCode(int ** byteCode, const char * byteCodeFilename) {
 // DEBUG
 //-----------------------------------------------------------------
 
-void VmDump(FILE * stream, VM_resource * virtualMachine, size_t upCode) {
+void VmDump(FILE * stream, vmResource * virtualMachine, size_t upCode) {
 
     printf("\n");
     printf(YELLOW "-------------------------------------------------------------------------\n" RESET);
@@ -749,7 +745,7 @@ void VmDump(FILE * stream, VM_resource * virtualMachine, size_t upCode) {
 }
 
 // IO functions ----------------------------------------------------
-err_t GetBCfilenameStd(const int argc, const char * argv[], char * readFromFile) { // argv parser 
+err_t ArgvParser(const int argc, const char * argv[], char * readFromFile) {
 
     ASSERT(argv);
 

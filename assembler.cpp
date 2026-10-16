@@ -7,10 +7,10 @@ typedef int err_t;
 #include <limits.h>
 #include <stdint.h>
 
-#include "./include/errors.h"
-#include "./include/colors.h"
-#include "./include/io.h"
-#include "./include/commands.h"
+#include "include/errors.h"
+#include "include/colors.h"
+#include "include/io.h"
+#include "include/commands.h"
 #include "hashcommands.h"
 
 struct Marks {
@@ -62,7 +62,7 @@ err_t AsmCtor(const int argc, const char * argv[], Assembler * assembler);
 err_t GetAsmFilenameStd(const int argc, const char * argv[], Assembler * fileInfo);
 
 err_t Assemble(Assembler * assembler);
-                                    // mother fucker struct <...>
+
 err_t GetCommandCode(Marks * label, Command * command, int32_t * commandCode,
                                   Argument * argument, int32_t * newValue);
 int GetRegCode(Argument * arg2);
@@ -117,8 +117,6 @@ err_t AsmCtor(const int argc, const char * argv[], Assembler * assembler) {
     ASSERT(assembler);
 
     if (!GetAsmFilenameStd(argc, argv, assembler)) return ERR_ASM_CTOR;
-
-    // FileStat fAsmSource = {};
 
     err_t prepareAsmStat = PrepareAsmSource(&(assembler->fAsmSource), assembler->readFrom, assembler->writeTo);
     if (prepareAsmStat != ERR_OK) {
