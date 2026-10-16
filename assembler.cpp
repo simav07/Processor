@@ -63,21 +63,21 @@ err_t GetAsmFilenameStd(const int argc, const char * argv[], Assembler * fileInf
 
 err_t Assemble(Assembler * assembler);
 
-err_t GetCommandCode(Marks * label, Command * command, int32_t * commandCode,
+err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode,
                                   Argument * argument, int32_t * newValue);
 int GetRegCode(Argument * arg2);
 
-err_t WriteJumpMark(Marks * label, const char * arg, int * newValue, int32_t * commandCode);
+err_t WriteJumpMark(Marks * label, const char * arg, int * newValue, uint8_t * commandCode);
 err_t MakeMark(Marks * label, const char * arg1, const size_t currIndex);
 err_t WriteMarkIndex(Marks * label, const char * arg2, int * newValue);
 
 //! Write commands to the file with byte code
 size_t DjbHash(const void * data, size_t size);
 
-err_t WriteArguments(FILE * fileSource, int args, int32_t newCommandCode, int newElem);
+err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, int32_t newElem);
 err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const char * byteCodeName);
 err_t GetCodeArguments(Assembler * assembler, size_t * count, int i, int * nArgs,
-                                              int32_t * newElem, int32_t * newCommandCode);
+                                              int32_t * newElem, uint8_t * newCommandCode);
 
 err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile);
 
@@ -180,18 +180,18 @@ err_t Assemble(Assembler * assembler) {
 
         int nArgs = 0;
 
-        int32_t newCommandCode = 0; // uint8_t
+        uint8_t newCommandCode = 0;
 
         err_t getArgStat = GetCodeArguments(assembler, &count, i, &nArgs, &newElem, &newCommandCode);
         if (getArgStat != ERR_OK) {
             printf("Error of getting args\n");
-            return ERR_INTPR;
+            return ERR_ASM;
         }
 
         err_t writeArgsStat = WriteArguments(byteCodeFile, nArgs, newCommandCode, newElem);
         if (writeArgsStat != ERR_OK) {
             printf("Error of writing arguments to the byte code file\n");
-            return ERR_INTPR;
+            return ERR_ASM;
         }
 
     }
@@ -228,41 +228,40 @@ err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const 
     return ERR_OK;
 }
 
-err_t WriteArguments(FILE * fileSource, int args, int32_t newCommandCode, int newElem) {
+err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, int32_t newElem) {
 
     ASSERT(fileSource);
 
     if (newCommandCode == SKIP_STEP) return ERR_OK;
 
-    if ((args == 1) || (args == 2 && newElem == POISON_VALUE)) {  // real command without argument
+    if (args != 1 && args != 2) {
+        return ERR_ASM;
+    }
 
-        // fprintf(fileSource, "%d\n", newCommandCode);
+    uint8_t argCount = (args == 2) ? 1 : 0;
 
-        if (fwrite(&newCommandCode, sizeof(int32_t), 1, fileSource) != 1) return ERR_ASM;
+    //! 1st byte: quantity of arguments
+    if (fwrite(&argCount, sizeof(uint8_t), 1, fileSource) != 1) return ERR_ASM;
+
+    //! 2nd byte: code of the command
+    if (fwrite(&newCommandCode, sizeof(uint8_t), 1, fileSource) != 1) return ERR_ASM;
+
+    //! Next 4 bytes: argument (if its need)
+    if (argCount == 1) {
+
+        if (fwrite(&newElem, sizeof(newElem), 1, fileSource) != 1) {
+
+            return ERR_ASM;
         
-        return ERR_OK;
-
+        }
     }
 
-    if (args == 2) {  // real command with one argument
-
-        if (fwrite(&newCommandCode, sizeof(int32_t), 1, fileSource) != 1) return ERR_ASM;
-
-        int32_t argument = (int32_t)newElem;
-
-        if (fwrite(&argument, sizeof(int32_t), 1, fileSource) != 1) return ERR_ASM;
-
-        // fprintf(fileSource, "%d\t%d\n", newCommandCode, newElem);
-        return ERR_OK;
-
-    }
-
-    return ERR_INTPR;
+    return ERR_OK;
 
 }
 
 err_t GetCodeArguments(Assembler * assembler, size_t * count, int i, int * nArgs,
-                                              int32_t * newElem, int32_t * newCommandCode) {
+                                              int32_t * newElem, uint8_t * newCommandCode) {
     ASSERT(assembler);
     ASSERT(count);
 
@@ -290,7 +289,7 @@ err_t GetCodeArguments(Assembler * assembler, size_t * count, int i, int * nArgs
         return ERR_OK;
     }
 
-    *count += *nArgs;
+    *count += 2 + ((*nArgs == 2) ? sizeof(int32_t) : 0);
 
     Command command   = {.commandPtr = arg1, .commandSize = strlen(arg1)};
     Argument argument = {.argPtr = arg2, .argSize = strlen(arg2)};
@@ -405,7 +404,7 @@ err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFil
 
 }
 
-err_t GetCommandCode(Marks * label, Command * command, int32_t * commandCode, 
+err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode, 
                                     Argument * argument, int32_t * newValue) {
 
     ASSERT(label);
@@ -597,7 +596,7 @@ err_t GetCommandCode(Marks * label, Command * command, int32_t * commandCode,
     return ERR_INTPR;
 }
 
-err_t WriteJumpMark(Marks * label, const char * arg, int * newValue, int32_t * commandCode) {
+err_t WriteJumpMark(Marks * label, const char * arg, int * newValue, uint8_t * commandCode) {
 
     err_t markStat = WriteMarkIndex(label, arg, newValue);
 

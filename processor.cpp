@@ -9,7 +9,7 @@ struct vmResource {
 
     FILE * fileDump = NULL;
     
-    int * byteCode = NULL;
+    uint8_t * byteCode = NULL;
     size_t byteCodeLen = 0;
     
     size_t pc = 0;
@@ -41,7 +41,11 @@ err_t RunVirtualMachine(vmResource * virtualMachine);
 err_t PrepareByteCode(vmResource * virtualMachine, const int argc, const char * argv[]);
 
 //! Fill byte code buffer from txt
-size_t GetByteCode(int ** byteCode, const char * byteCodeFilename);
+size_t GetByteCode(uint8_t ** byteCode, const char * byteCodeFilename);
+
+size_t GetInstructionSize(vmResource * virtualMachine);
+int32_t GetInstructionArgument(vmResource * virtualMachine);
+
 
 //! Interpreter: run commands
 err_t Interpreter(vmResource * virtualMachine, size_t * upCode);
@@ -108,8 +112,7 @@ err_t VmCtor(const int argc, const char * argv[], vmResource * virtualMachine) {
     ASSERT(virtualMachine);
 
     virtualMachine->pc = 0;
-
-    // constructor de facto 
+ 
     err_t preparingStat = PrepareByteCode(virtualMachine, argc, argv);
 
     if (preparingStat != ERR_OK) {
@@ -118,15 +121,15 @@ err_t VmCtor(const int argc, const char * argv[], vmResource * virtualMachine) {
         return ERR_VM_CTOR;
     }
 
-    virtualMachine->pc = 0; // mother fucker what is it
+    virtualMachine->pc = 0;
 
-    int ctorStat1 = StackCtor(&(virtualMachine->stack), 10); // mother fucker its constructor
+    int ctorStat1 = StackCtor(&(virtualMachine->stack), 10);
     if (ctorStat1 != ERR_OK) return ERR_VM_CTOR;
 
-    int ctorStat2 = StackCtor(&(virtualMachine->funcStack), 10); // mother fucker its constructor
+    int ctorStat2 = StackCtor(&(virtualMachine->funcStack), 10);
     if (ctorStat2 != ERR_OK) return ERR_VM_CTOR;
 
-    virtualMachine->fileDump = fopen(FILE_STACKDUMP, "w"); // mother fucker its constructor
+    virtualMachine->fileDump = fopen(FILE_STACKDUMP, "w");
     if (!virtualMachine->fileDump) return ERR_FILEOPEN;
 
     return ERR_OK;
@@ -177,7 +180,7 @@ err_t RunVirtualMachine(vmResource * virtualMachine) {
     ASSERT(virtualMachine);
     ASSERT(virtualMachine->byteCode);
 
-    while (virtualMachine->byteCode[virtualMachine->pc] != HLT_C) {
+    while (virtualMachine->byteCode[virtualMachine->pc + 1] != HLT_C) {
 
         if (virtualMachine->pc >= virtualMachine->byteCodeLen) {
 
@@ -207,8 +210,10 @@ err_t RunVirtualMachine(vmResource * virtualMachine) {
         getchar();
         #endif
 
-        if (virtualMachine->pcChanged == false) {
-            virtualMachine->pc = virtualMachine->pc + upCode;
+        size_t instrSize = GetInstructionSize(virtualMachine);
+
+        if (!virtualMachine->pcChanged) {
+            virtualMachine->pc += instrSize;
         }
     }
 
@@ -223,57 +228,48 @@ err_t Interpreter(vmResource * virtualMachine, size_t * upCode) {
     *upCode = 1;
 
     if (virtualMachine->pc >= virtualMachine->byteCodeLen) return ERR_PROCESSING;
+    if (virtualMachine->pc + 1 >= virtualMachine->byteCodeLen) return ERR_PROCESSING;
 
-    switch (virtualMachine->byteCode[virtualMachine->pc])
+    switch (virtualMachine->byteCode[virtualMachine->pc + 1])
     {
     // PUSH
     case (PUSH_C):
-        if (virtualMachine->pc + 1 >= virtualMachine->byteCodeLen) return ERR_PROCESSING;
         *upCode = 2;
         return PushCom(virtualMachine, upCode);
 
     case (POP_R):
-        if (virtualMachine->pc + 1 >= virtualMachine->byteCodeLen) return ERR_PROCESSING;
         *upCode = 2;
         return PopR(virtualMachine, upCode);
 
     case (PUSH_R):
-        if (virtualMachine->pc + 1 >= virtualMachine->byteCodeLen) return ERR_PROCESSING;
         *upCode = 2;
         return PushR(virtualMachine, upCode);
 
     case (JUMP_C):
-        if (virtualMachine->pc + 1 >= virtualMachine->byteCodeLen) return ERR_PROCESSING;
         *upCode = 2;
-        return Jump(virtualMachine, (size_t)virtualMachine->byteCode[virtualMachine->pc + 1]);
+        return Jump(virtualMachine, (size_t)GetInstructionArgument(virtualMachine));
 
     case (JA_C):
-        if (virtualMachine->pc + 1 >= virtualMachine->byteCodeLen) return ERR_PROCESSING;
         *upCode = 2;
         return JA(virtualMachine, upCode);
 
     case (JAE_C):
-        if (virtualMachine->pc + 1 >= virtualMachine->byteCodeLen) return ERR_PROCESSING;
         *upCode = 2;
         return JAE(virtualMachine, upCode);
 
     case (JB_C):
-        if (virtualMachine->pc + 1 >= virtualMachine->byteCodeLen) return ERR_PROCESSING;
         *upCode = 2;
         return JB(virtualMachine, upCode);
 
     case (JBE_C):
-        if (virtualMachine->pc + 1 >= virtualMachine->byteCodeLen) return ERR_PROCESSING;
         *upCode = 2;
         return JBE(virtualMachine, upCode);
 
     case (JE_C):
-        if (virtualMachine->pc + 1 >= virtualMachine->byteCodeLen) return ERR_PROCESSING;
         *upCode = 2;
         return JE(virtualMachine, upCode);
 
     case (JNE_C):
-        if (virtualMachine->pc + 1 >= virtualMachine->byteCodeLen) return ERR_PROCESSING;
         *upCode = 2;
         return JNE(virtualMachine, upCode);
 
@@ -326,7 +322,7 @@ err_t PushCom(vmResource * virtualMachine, size_t * upCode) {
     ASSERT(virtualMachine);
     ASSERT(upCode);
 
-    err_t pushStat = StackPush(&(virtualMachine->stack), virtualMachine->byteCode[virtualMachine->pc + 1]);
+    err_t pushStat = StackPush(&(virtualMachine->stack), GetInstructionArgument(virtualMachine));
 
     if (pushStat != ERR_OK) return ERR_COMMAND;
 
@@ -340,7 +336,7 @@ err_t PopR(vmResource * virtualMachine, size_t * upCode) {
     ASSERT(virtualMachine);
     ASSERT(upCode);
 
-    int registerIndex = virtualMachine->byteCode[virtualMachine->pc + 1];
+    int32_t registerIndex = GetInstructionArgument(virtualMachine);
     if (registerIndex < 0 || registerIndex >= 5) return ERR_COMMAND;
 
     err_t popStat = 0;
@@ -359,7 +355,7 @@ err_t PushR(vmResource * virtualMachine, size_t * upCode) {
     ASSERT(virtualMachine);
     ASSERT(upCode);
 
-    int registerIndex = virtualMachine->byteCode[virtualMachine->pc + 1];
+    int32_t registerIndex = GetInstructionArgument(virtualMachine);
     if (registerIndex < 0 || registerIndex >= 5) return ERR_COMMAND;
 
     err_t pushStat = StackPush(&(virtualMachine->stack), virtualMachine->regstr[registerIndex]);
@@ -398,7 +394,7 @@ err_t JA(vmResource * virtualMachine, size_t * upCode) {
     if (popStat2 != ERR_OK) return ERR_COMMAND;
 
     *upCode = 2;
-    if (a > b) return Jump(virtualMachine, (size_t)virtualMachine->byteCode[virtualMachine->pc + 1]);
+    if (a > b) return Jump(virtualMachine, (size_t)GetInstructionArgument(virtualMachine));
 
     return ERR_OK;
 }
@@ -418,7 +414,7 @@ err_t JAE(vmResource * virtualMachine, size_t * upCode) {
     if (popStat2 != ERR_OK) return ERR_COMMAND;
 
     *upCode = 2;
-    if (a >= b) return Jump(virtualMachine, (size_t)virtualMachine->byteCode[virtualMachine->pc + 1]);
+    if (a >= b) return Jump(virtualMachine, (size_t)GetInstructionArgument(virtualMachine));
 
     return ERR_OK;
 }
@@ -438,7 +434,7 @@ err_t JB(vmResource * virtualMachine, size_t * upCode) {
     if (popStat2 != ERR_OK) return ERR_COMMAND;
 
     *upCode = 2;
-    if (a < b) return Jump(virtualMachine, (size_t)virtualMachine->byteCode[virtualMachine->pc + 1]);
+    if (a < b) return Jump(virtualMachine, (size_t)GetInstructionArgument(virtualMachine));
 
     return ERR_OK;
 }
@@ -458,7 +454,7 @@ err_t JBE(vmResource * virtualMachine, size_t * upCode) {
     if (popStat2 != ERR_OK) return ERR_COMMAND;
 
     *upCode = 2;
-    if (a <= b) return Jump(virtualMachine, (size_t)virtualMachine->byteCode[virtualMachine->pc + 1]);
+    if (a <= b) return Jump(virtualMachine, (size_t)GetInstructionArgument(virtualMachine));
 
     return ERR_OK;
 }
@@ -478,7 +474,7 @@ err_t JE(vmResource * virtualMachine, size_t * upCode) {
     if (popStat2 != ERR_OK) return ERR_COMMAND;
 
     *upCode = 2;
-    if (a == b) return Jump(virtualMachine, (size_t)virtualMachine->byteCode[virtualMachine->pc + 1]);
+    if (a == b) return Jump(virtualMachine, (size_t)GetInstructionArgument(virtualMachine));
 
     return ERR_OK;
 }
@@ -498,7 +494,7 @@ err_t JNE(vmResource * virtualMachine, size_t * upCode) {
     if (popStat2 != ERR_OK) return ERR_COMMAND;
 
     *upCode = 2;
-    if (a != b) return Jump(virtualMachine, (size_t)virtualMachine->byteCode[virtualMachine->pc + 1]);
+    if (a != b) return Jump(virtualMachine, (size_t)GetInstructionArgument(virtualMachine));
 
     return ERR_OK;
 }
@@ -529,11 +525,13 @@ err_t Call(vmResource * virtualMachine, size_t * upCode) {
     ASSERT(virtualMachine);
     ASSERT(upCode);
 
-    err_t pushStat = StackPush(&(virtualMachine->funcStack), virtualMachine->pc);
+    err_t pushStat = StackPush(&(virtualMachine->funcStack),
+                                virtualMachine->pc + GetInstructionSize(virtualMachine));
     if (pushStat != ERR_OK) return ERR_CALL;
 
     *upCode = 2;
-    return Jump(virtualMachine, (size_t)virtualMachine->byteCode[virtualMachine->pc + 1]);
+    
+    return Jump(virtualMachine, (size_t)GetInstructionArgument(virtualMachine));
 }
 
 err_t Ret(vmResource * virtualMachine, size_t * upCode) {
@@ -546,7 +544,7 @@ err_t Ret(vmResource * virtualMachine, size_t * upCode) {
     if (popStat != ERR_OK) return ERR_RET;
 
     *upCode = 1;
-    return Jump(virtualMachine, backIndex + 2);
+    return Jump(virtualMachine, backIndex);
 }
 
 // Get 2 last elems from stack
@@ -654,7 +652,7 @@ err_t OutCom(vmResource * virtualMachine, size_t * upCode) {
 }
 //------------------------------------------------------------------
 
-size_t GetByteCode(int ** byteCode, const char * byteCodeFilename) {
+size_t GetByteCode(uint8_t ** byteCode, const char * byteCodeFilename) {
 
     ASSERT(byteCode);
     ASSERT(byteCodeFilename);
@@ -664,11 +662,35 @@ size_t GetByteCode(int ** byteCode, const char * byteCodeFilename) {
     //if (!GetAsmFilenameStd(argc, argv, &txtFile)) ASSERT(0);
     if (!ReadTxtFile(byteCodeFilename, "rb", &binFile)) ASSERT(0);
 
-    *byteCode = (int *)binFile.text_ptr;
+    *byteCode = (uint8_t *)binFile.text_ptr;
     
-    return (int)(binFile.sizeInBytes / sizeof(int));
+    return binFile.sizeInBytes;
 
 }
+
+
+size_t GetInstructionSize(vmResource * virtualMachine) {
+
+    ASSERT(virtualMachine);
+    ASSERT(virtualMachine->byteCode);
+
+    uint8_t argCount = virtualMachine->byteCode[virtualMachine->pc];
+
+    return 2 + (size_t)argCount * sizeof(int32_t);
+}
+
+int32_t GetInstructionArgument(vmResource * virtualMachine) {
+
+    ASSERT(virtualMachine);
+    ASSERT(virtualMachine->byteCode);
+
+    int32_t argument = 0;
+
+    memcpy(&argument, virtualMachine->byteCode + virtualMachine->pc + 2, sizeof(argument));
+
+    return argument;
+}
+
 
 //-----------------------------------------------------------------
 // DEBUG
