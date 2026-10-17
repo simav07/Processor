@@ -2,6 +2,7 @@
 #include "include/io.h"
 #include "include/commands.h"
 #include "hashcommands.h"
+#include <string.h>
 
 struct vmResource {
 
@@ -19,7 +20,11 @@ struct vmResource {
 
     //! Registers
     stackElem_t regstr[5] = {};
+
+    stackElem_t * RAM;
 };
+
+const size_t ramSize = 200;
 
 //! Flag for byte code filename
 static const char * CMD_FLAG_BYTECODE = "--bytecode";
@@ -47,7 +52,8 @@ size_t GetInstructionSize(vmResource * virtualMachine);
 int32_t GetInstructionArgument(vmResource * virtualMachine);
 
 
-//! Interpreter: run commands
+//! RunCommands: run commands
+err_t RunCommands(vmResource * virtualMachine);
 err_t Interpreter(vmResource * virtualMachine);
 
 //! Commands for virtual machine -------------------------------------
@@ -123,6 +129,10 @@ err_t VmCtor(const int argc, const char * argv[], vmResource * virtualMachine) {
 
     virtualMachine->pc = 0;
 
+    stackElem_t * newMemPtr = (stackElem_t *)calloc(ramSize, sizeof(stackElem_t));
+    if (!newMemPtr) return ERR_CTOR;
+    virtualMachine->RAM = newMemPtr;
+
     int ctorStat1 = StackCtor(&(virtualMachine->stack), 10);
     if (ctorStat1 != ERR_OK) return ERR_VM_CTOR;
 
@@ -180,27 +190,23 @@ err_t RunVirtualMachine(vmResource * virtualMachine) {
     ASSERT(virtualMachine);
     ASSERT(virtualMachine->byteCode);
 
-    while (virtualMachine->byteCode[virtualMachine->pc + 1] != HLT_C) {
+    while (virtualMachine->pc < virtualMachine->byteCodeLen) {
 
-        if (virtualMachine->pc >= virtualMachine->byteCodeLen) {
+        if ((virtualMachine->byteCode[virtualMachine->pc] & 0x1F) == HLT_C) return ERR_OK;
 
-            printf(BOLD_RED "In asm file no HLT command\n" RESET);
-            
-            VmDtor(virtualMachine);
+        virtualMachine->pcChanged = false;
+        size_t instrSize = GetInstructionSize(virtualMachine);
 
+        if (instrSize == 0 || instrSize > virtualMachine->byteCodeLen - virtualMachine->pc) {
+            printf(BOLD_RED "Incorrect instruction at pc=%zu\n" RESET, virtualMachine->pc);
             return ERR_PROCESSING;
         }
 
-        virtualMachine->pcChanged = false;
         err_t interpreterStat = Interpreter(virtualMachine);
 
         if (interpreterStat != ERR_OK) {
-
             printf(RED "ERROR_PROCESSING: command at pc=%zu, error=%d\n" RESET,
                                                 virtualMachine->pc, interpreterStat);
-            
-            VmDtor(virtualMachine);
-            
             return interpreterStat;
         }
 
@@ -209,92 +215,110 @@ err_t RunVirtualMachine(vmResource * virtualMachine) {
         getchar();
         #endif
 
-        size_t instrSize = GetInstructionSize(virtualMachine);
-
-        if (!virtualMachine->pcChanged) {
-            virtualMachine->pc += instrSize;
-        }
+        if (!virtualMachine->pcChanged) virtualMachine->pc += instrSize;
     }
 
-    return ERR_OK;
+    printf(BOLD_RED "In asm file no HLT command\n" RESET);
+    return ERR_PROCESSING;
 }
 
 err_t Interpreter(vmResource * virtualMachine) {
 
     ASSERT(virtualMachine);
 
-    if (virtualMachine->pc >= virtualMachine->byteCodeLen) return ERR_PROCESSING;
-    if (virtualMachine->pc + 1 >= virtualMachine->byteCodeLen) return ERR_PROCESSING;
+    uint8_t command = virtualMachine->byteCode[virtualMachine->pc] & 0x1F;
 
-    switch (virtualMachine->byteCode[virtualMachine->pc + 1])
-    {
-    // PUSH
-    case (PUSH_C):
-        return PushCom(virtualMachine);
+    uint8_t flags = virtualMachine->byteCode[virtualMachine->pc];
+    
+    stackElem_t result = 0;
+    size_t argIndex = virtualMachine->pc + 1;
+    int32_t value = 0;
 
-    case (POP_R):
-        return PopR(virtualMachine);
+    if (flags & 0x40) {
+        
+        int32_t regIndex = 0;
 
-    case (PUSH_R):
-        return PushR(virtualMachine);
+        if (argIndex + sizeof(int32_t) > virtualMachine->byteCodeLen) return ERR_PROCESSING;
 
-    case (JUMP_C):
-        return Jump(virtualMachine, (size_t)GetInstructionArgument(virtualMachine));
-
-    case (JA_C):
-        return JA(virtualMachine);
-
-    case (JAE_C):
-        return JAE(virtualMachine);
-
-    case (JB_C):
-        return JB(virtualMachine);
-
-    case (JBE_C):
-        return JBE(virtualMachine);
-
-    case (JE_C):
-        return JE(virtualMachine);
-
-    case (JNE_C):
-        return JNE(virtualMachine);
-
-    case (IN_C):
-        return IN(virtualMachine);
-
-    case (RET_C):
-        return Ret(virtualMachine);
-
-    case (CALL_C):
-        if (virtualMachine->pc + 1 >= virtualMachine->byteCodeLen) return ERR_PROCESSING;
-        return Call(virtualMachine);
-
-    // ADD (+)
-    case (ADD_C):
-        return AddCom(virtualMachine);
-
-    // SUB (-)
-    case (SUB_C):
-        return SubCom(virtualMachine);
-
-    // DIV (/)
-    case (DIV_C):
-        return DivCom(virtualMachine);
-
-    // MUL (*)
-    case (MUL_C):
-        return MulCom(virtualMachine);
-
-    // OUT
-    case (OUT_C):
-        return OutCom(virtualMachine);
-
-    case (HLT_C):
-        return ERR_OK;
-
-    default:
-        return ERR_COMMAND;
+        memcpy(&regIndex, virtualMachine->byteCode + argIndex, sizeof(regIndex));
+        
+        if (regIndex < 0 || regIndex >= 5) return ERR_COMMAND;
+        
+        result += virtualMachine->regstr[regIndex];
+        argIndex += sizeof(int32_t);
     }
+
+    if (flags & 0x20) {
+        if (argIndex + sizeof(int32_t) > virtualMachine->byteCodeLen) return ERR_PROCESSING;
+
+        memcpy(&value, virtualMachine->byteCode + argIndex, sizeof(value));
+
+        result += value;
+        argIndex += sizeof(int32_t);
+    }
+
+    if (flags & 0x80) {
+        if (result < 0 || result >= (stackElem_t)ramSize) return ERR_COMMAND;
+        
+        if (command == POP_C) {
+            err_t popStat = ERR_OK;
+            stackElem_t var = StackPop(&(virtualMachine->stack), &popStat);
+            if (popStat != ERR_OK) return ERR_COMMAND;
+            virtualMachine->RAM[(size_t)result] = var;
+            return ERR_OK;
+        }
+        result = virtualMachine->RAM[(size_t)result];
+    }
+
+    switch (command) {
+
+        case PUSH_C: {
+            if (!(flags & 0xE0)) return ERR_COMMAND;
+            if (flags & 0x80) return StackPush(&(virtualMachine->stack), result) == ERR_OK ? ERR_OK : ERR_PUSH_COM;
+            return StackPush(&(virtualMachine->stack), result) == ERR_OK ? ERR_OK : ERR_PUSH_COM;
+        }
+
+        case POP_C: {
+            if (flags & 0x80) return ERR_OK;
+            if (!(flags & 0x40) || (flags & 0x20)) return ERR_COMMAND;
+            int32_t regIndex = 0;
+            memcpy(&regIndex, virtualMachine->byteCode + virtualMachine->pc + 1, sizeof(regIndex));
+            if (regIndex < 0 || regIndex >= 5) return ERR_COMMAND;
+            err_t popStat = ERR_OK;
+            stackElem_t var = StackPop(&(virtualMachine->stack), &popStat);
+            if (popStat != ERR_OK) return ERR_COMMAND;
+            virtualMachine->regstr[regIndex] = var;
+            return ERR_OK;
+        }
+
+        case JUMP_C: return Jump(virtualMachine, (size_t)GetInstructionArgument(virtualMachine));
+        case JA_C:   return JA(virtualMachine);
+        case JAE_C:  return JAE(virtualMachine);
+        case JB_C:   return JB(virtualMachine);
+        case JBE_C:  return JBE(virtualMachine);
+        case JE_C:   return JE(virtualMachine);
+        case JNE_C:  return JNE(virtualMachine);
+        case IN_C:   return IN(virtualMachine);
+        case RET_C:  return Ret(virtualMachine);
+        case CALL_C: return Call(virtualMachine);
+        case ADD_C:  return AddCom(virtualMachine);
+        case SUB_C:  return SubCom(virtualMachine);
+        case DIV_C:  return DivCom(virtualMachine);
+        case MUL_C:  return MulCom(virtualMachine);
+        case OUT_C:  return OutCom(virtualMachine);
+        case HLT_C:  return ERR_OK;
+
+        default:     return ERR_COMMAND;
+    }
+}
+
+err_t RunCommands(vmResource * virtualMachine) {
+
+    ASSERT(virtualMachine);
+
+    if (virtualMachine->pc >= virtualMachine->byteCodeLen) return ERR_PROCESSING;
+
+    return Interpreter(virtualMachine);
 
 }
 
@@ -618,15 +642,29 @@ size_t GetByteCode(uint8_t ** byteCode, const char * byteCodeFilename) {
 
 }
 
-
+// ------------------------ CHANGE -------------------------------------------------
 size_t GetInstructionSize(vmResource * virtualMachine) {
 
     ASSERT(virtualMachine);
     ASSERT(virtualMachine->byteCode);
 
-    uint8_t argCount = virtualMachine->byteCode[virtualMachine->pc];
+    if (virtualMachine->pc >= virtualMachine->byteCodeLen) return 0;
 
-    return 2 + (size_t)argCount * sizeof(int32_t);
+    uint8_t command = virtualMachine->byteCode[virtualMachine->pc];
+    size_t argCount = 0;
+
+    if (command & 0x20) argCount++;
+    if (command & 0x40) argCount++;
+
+    if ((command & 0x1F) == JUMP_C || (command & 0x1F) == JA_C ||
+        (command & 0x1F) == JAE_C || (command & 0x1F) == JB_C ||
+        (command & 0x1F) == JBE_C || (command & 0x1F) == JE_C ||
+        (command & 0x1F) == JNE_C || (command & 0x1F) == CALL_C) argCount = 1;
+
+    size_t instrSize = 1 + argCount * sizeof(int32_t);
+    if (instrSize > virtualMachine->byteCodeLen - virtualMachine->pc) return 0;
+
+    return instrSize;
 }
 
 int32_t GetInstructionArgument(vmResource * virtualMachine) {
@@ -635,8 +673,9 @@ int32_t GetInstructionArgument(vmResource * virtualMachine) {
     ASSERT(virtualMachine->byteCode);
 
     int32_t argument = 0;
+    if (virtualMachine->pc + 1 + sizeof(argument) > virtualMachine->byteCodeLen) return -1;
 
-    memcpy(&argument, virtualMachine->byteCode + virtualMachine->pc + 2, sizeof(argument));
+    memcpy(&argument, virtualMachine->byteCode + virtualMachine->pc + 1, sizeof(argument));
 
     return argument;
 }

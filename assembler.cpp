@@ -14,7 +14,8 @@ typedef int err_t;
 #include "hashcommands.h"
 
 struct Marks {
-    int Label[20] = {0};
+    int Label[20] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
     size_t nMark  = 0;
 };
 
@@ -38,6 +39,17 @@ struct Argument {
     size_t argSize;
 };
 
+/**
+ * Values near the command like PUSH 20, POP [1], PUSH [BX+30].
+ * There is 2 (BX = 2) and 30 is first value and second value
+ * Maximum two values near the command
+ */
+struct ArgValues {
+    int32_t value1;
+    int32_t value2;
+    uint8_t usedArgs; //!< 0, 1 or 2 used arguments in current command
+};
+
 //! Flag for user's filename of asm source
 const char * CMD_FLAG_ASM = "--asmsource";
 //! Flag for user's filename of byte code
@@ -48,7 +60,7 @@ const char * PROG_BYTECODE_FILE = "bcode.bin";
 
 char * BYTECODE_FILENAME = NULL;
 
-//! Max command length for commands (bad)
+//! Max command length for commands
 const int MAX_COMMAND_LEN = 20;
 
 const int POISON_VALUE = INT32_MAX;
@@ -64,8 +76,11 @@ err_t ArgvParser(const int argc, const char * argv[], Assembler * fileInfo);
 err_t Assemble(Assembler * assembler);
 
 err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode,
-                                  Argument * argument, int32_t * newValue);
+                                  Argument * argument, ArgValues * newValues);
 int GetRegCode(Argument * arg2);
+
+err_t GetPushPopCode(uint8_t defaultValue, Command * command, Argument * arg,
+                                           uint8_t * commandCode, ArgValues * argValues);
 
 err_t WriteJumpMark(Marks * label, const char * arg, int * newValue, uint8_t * commandCode);
 err_t MakeMark(Marks * label, const char * arg1, const size_t currIndex);
@@ -74,10 +89,10 @@ err_t WriteMarkIndex(Marks * label, const char * arg2, int * newValue);
 //! Write commands to the file with byte code
 size_t DjbHash(const void * data, size_t size);
 
-err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, int32_t newElem);
+err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, ArgValues * newValues);
 err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const char * byteCodeName);
 err_t GetCodeArguments(Assembler * assembler, size_t * count, int i, int * nArgs,
-                                              int32_t * newElem, uint8_t * newCommandCode);
+                                              ArgValues * newValues, uint8_t * newCommandCode);
 
 err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile);
 
@@ -175,19 +190,20 @@ err_t Assemble(Assembler * assembler) {
         if ((assembler->fAsmSource).index->length > MAX_COMMAND_LEN) return ERR_OVERFLOW; //! overflow protect
         
         char command[MAX_COMMAND_LEN] = "";
-        int32_t newElem = 0;
+        
+        ArgValues newValues = {};
 
         int nArgs = 0;
 
         uint8_t newCommandCode = 0;
 
-        err_t getArgStat = GetCodeArguments(assembler, &count, i, &nArgs, &newElem, &newCommandCode);
+        err_t getArgStat = GetCodeArguments(assembler, &count, i, &nArgs, &newValues, &newCommandCode);
         if (getArgStat != ERR_OK) {
             printf("Error of getting args\n");
             return ERR_ASM;
         }
 
-        err_t writeArgsStat = WriteArguments(byteCodeFile, nArgs, newCommandCode, newElem);
+        err_t writeArgsStat = WriteArguments(byteCodeFile, nArgs, newCommandCode, &newValues);
         if (writeArgsStat != ERR_OK) {
             printf("Error of writing arguments to the byte code file\n");
             return ERR_ASM;
@@ -227,8 +243,9 @@ err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const 
     return ERR_OK;
 }
 
-err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, int32_t newElem) {
+err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, ArgValues * newValues) {
 
+    ASSERT(newValues);
     ASSERT(fileSource);
 
     if (newCommandCode == SKIP_STEP || args <= 0) return ERR_OK;
@@ -239,20 +256,23 @@ err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, int32_
 
     uint8_t argCount = (args == 2) ? 1 : 0;
 
-    //! 1st byte: quantity of arguments
-    if (fwrite(&argCount, sizeof(uint8_t), 1, fileSource) != 1) return ERR_ASM;
+    // 1st byte: quantity of arguments
+    // if (fwrite(&argCount, sizeof(uint8_t), 1, fileSource) != 1) return ERR_ASM;
 
-    //! 2nd byte: code of the command
+    //! 1st byte: code of the command
     if (fwrite(&newCommandCode, sizeof(uint8_t), 1, fileSource) != 1) return ERR_ASM;
 
     //! Next 4 bytes: argument (if its need)
-    if (argCount == 1) {
+    if (newValues->usedArgs >= 1) {
 
-        if (fwrite(&newElem, sizeof(newElem), 1, fileSource) != 1) {
+        if (fwrite(&newValues->value1, sizeof(int32_t), 1, fileSource) != 1) return ERR_ASM;
 
-            return ERR_ASM;
-        
-        }
+    }
+
+    if (newValues->usedArgs == 2) {
+
+        if (fwrite(&newValues->value2, sizeof(int32_t), 1, fileSource) != 1) return ERR_ASM;
+
     }
 
     return ERR_OK;
@@ -260,7 +280,7 @@ err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, int32_
 }
 
 err_t GetCodeArguments(Assembler * assembler, size_t * count, int i, int * nArgs,
-                                              int32_t * newElem, uint8_t * newCommandCode) {
+                                              ArgValues * newValues, uint8_t * newCommandCode) {
     ASSERT(assembler);
     ASSERT(count);
 
@@ -296,12 +316,12 @@ err_t GetCodeArguments(Assembler * assembler, size_t * count, int i, int * nArgs
         return ERR_OK;
     }
 
-    *count += 2 + ((*nArgs == 2) ? sizeof(int32_t) : 0);
+    // *count += 2 + ((*nArgs == 2) ? sizeof(int32_t) : 0); // !!!
 
     Command command   = {.commandPtr = arg1, .commandSize = strlen(arg1)};
     Argument argument = {.argPtr = arg2, .argSize = strlen(arg2)};
 
-    err_t interpreterStat = GetCommandCode(&(assembler->label), &command, newCommandCode, &argument, newElem);
+    err_t interpreterStat = GetCommandCode(&(assembler->label), &command, newCommandCode, &argument, newValues);
 
     if (interpreterStat != ERR_OK) {
     
@@ -310,6 +330,9 @@ err_t GetCodeArguments(Assembler * assembler, size_t * count, int i, int * nArgs
         return ERR_INTPR;
     
     }
+
+    //! Count in bytes
+    *count += 1 + (newValues->usedArgs * sizeof(int32_t));
 
     return ERR_OK;
 
@@ -359,8 +382,10 @@ err_t MakeMark(Marks * label, const char * arg1, const size_t currIndex) {
         return ERR_MARK;
     }
 
+    if (nMark < 0 || nMark >= 20) return ERR_MARK;
+
     label->nMark = nMark;
-    label->Label[nMark] = currIndex;
+    label->Label[nMark] = (int)currIndex;
 
     return ERR_OK;
 
@@ -379,8 +404,10 @@ err_t WriteMarkIndex(Marks * label, const char * arg2, int * newValue) {
 
     if (indexStat != 1) return ERR_SYNTAX;
 
+    if (index < 0 || index >= 20) return ERR_MARK;
+
     int newIndex = label->Label[index];
-    if (newIndex == 0) {
+    if (newIndex < 0) {
         return ERR_SKIP_ARG;
     }
 
@@ -414,13 +441,13 @@ err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFil
 }
 
 err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode, 
-                                    Argument * argument, int32_t * newValue) {
+                                    Argument * argument, ArgValues * newValues) {
 
     ASSERT(label);
     ASSERT(command);
     ASSERT(commandCode);
     ASSERT(argument);
-    ASSERT(newValue);
+    ASSERT(newValues);
 
     size_t hashCommand = DjbHash((const void *)(command->commandPtr), command->commandSize);
 
@@ -428,57 +455,32 @@ err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode,
 
     case (HASH_PUSH): {
         if (strcmp(command->commandPtr, "PUSH") != 0) return ERR_INTPR;
+
+        return GetPushPopCode(PUSH_C, command, argument, commandCode, newValues);
         
-        if (!isalpha(argument->argPtr[0])) {
-            *commandCode = PUSH_C;
-            char * checkPtr;
-            *newValue = strtod(argument->argPtr, &checkPtr);
-            if (argument->argPtr == checkPtr) {
-                printf("Error of reading a number\n");
-                return ERR_SYNTAX;
-            }
-            return ERR_OK;
-        }
-
-        int getRegCodeStat = GetRegCode(argument);
-
-        *commandCode = PUSH_R;
-        
-        if (getRegCodeStat == ERR_REGISTER) return ERR_REGISTER;
-
-        *newValue = getRegCodeStat; // write a number of register to new Value
-
-        return ERR_OK;
     }
 
     case (HASH_POP): {
         if (strcmp(command->commandPtr, "POP") != 0) return ERR_INTPR;
 
-        int getRegCodeStat = GetRegCode(argument);
-
-        *commandCode = POP_R;
-        
-        if (getRegCodeStat == ERR_REGISTER) return ERR_REGISTER;
-
-        *newValue = getRegCodeStat; // write a number of register to new Value
-
-        return ERR_OK;
+        return GetPushPopCode(POP_C, command, argument, commandCode, newValues);
     }
 
     case (HASH_CALL): {
 
         if (strcmp(command->commandPtr, "CALL") != 0) return ERR_INTPR;
 
-        err_t markStat = WriteMarkIndex(label, argument->argPtr, newValue);
+        err_t markStat = WriteMarkIndex(label, argument->argPtr, &(newValues->value1));
 
         if (markStat == ERR_SKIP_ARG) {
-            *commandCode = SKIP_STEP;
-            return ERR_OK;
+            newValues->value1 = 0;
+        }
+        else if (markStat != ERR_OK) {
+            return ERR_MARK;
         }
 
-        if (markStat != ERR_OK) return ERR_MARK;
-
-        *commandCode = CALL_C;
+        *commandCode = CALL_C | 0x20;
+        newValues->usedArgs = 1;
 
         return ERR_OK;
 
@@ -498,7 +500,7 @@ err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode,
 
         if (strcmp(command->commandPtr, "JUMP") != 0) return ERR_INTPR;
 
-        err_t markStat = WriteMarkIndex(label, argument->argPtr, newValue);
+        err_t markStat = WriteMarkIndex(label, argument->argPtr, &(newValues->value1));
 
         if (markStat == ERR_SKIP_ARG) {
             *commandCode = SKIP_STEP;
@@ -507,7 +509,8 @@ err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode,
 
         if (markStat != ERR_OK) return ERR_MARK;
 
-        *commandCode = JUMP_C;
+        *commandCode = JUMP_C | 0x20;
+        newValues->usedArgs = 1;
 
         return ERR_OK;
     }
@@ -515,55 +518,63 @@ err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode,
     case (HASH_JA): {
         if (strcmp(command->commandPtr, "JA") != 0) return ERR_INTPR;
 
-        *commandCode = JA_C;
+        *commandCode = JA_C | 0x20;
+        newValues->usedArgs = 1;
 
-        return WriteJumpMark(label, argument->argPtr, newValue, commandCode);
+        return WriteJumpMark(label, argument->argPtr, &newValues->value1, commandCode);
 
     }
 
     case (HASH_JAE): {
         if (strcmp(command->commandPtr, "JAE") != 0) return ERR_INTPR;
 
-        *commandCode = JAE_C;
-        return WriteJumpMark(label, argument->argPtr, newValue, commandCode);
+        *commandCode = JAE_C | 0x20;
+        newValues->usedArgs = 1;
+
+        return WriteJumpMark(label, argument->argPtr, &newValues->value1, commandCode);
 
     }
 
     case (HASH_JB): {
         if (strcmp(command->commandPtr, "JB") != 0) return ERR_INTPR;
 
-        *commandCode = JB_C;
-        return WriteJumpMark(label, argument->argPtr, newValue, commandCode);
+        newValues->usedArgs = 1;
+        *commandCode = JB_C | 0x20;
+        return WriteJumpMark(label, argument->argPtr, &newValues->value1, commandCode);
 
     }
 
     case (HASH_JBE): {
         if (strcmp(command->commandPtr, "JBE") != 0) return ERR_INTPR;
 
-        *commandCode = JBE_C;
-        return WriteJumpMark(label, argument->argPtr, newValue, commandCode);
+        newValues->usedArgs = 1;
+        *commandCode = JBE_C | 0x20;
+        return WriteJumpMark(label, argument->argPtr, &newValues->value1, commandCode);
 
     }
 
     case (HASH_JE): {
         if (strcmp(command->commandPtr, "JE") != 0) return ERR_INTPR;
 
-        *commandCode = JE_C;
-        return WriteJumpMark(label, argument->argPtr, newValue, commandCode);
+        newValues->usedArgs = 1;
+        *commandCode = JE_C | 0x20;
+        return WriteJumpMark(label, argument->argPtr, &newValues->value1, commandCode);
 
     }
 
     case (HASH_JNE): {
         if (strcmp(command->commandPtr, "JNE") != 0) return ERR_INTPR;
 
-        *commandCode = JNE_C;
-        return WriteJumpMark(label, argument->argPtr, newValue, commandCode);
+        newValues->usedArgs = 1;
+        *commandCode = JNE_C | 0x20;
+        return WriteJumpMark(label, argument->argPtr, &newValues->value1, commandCode);
 
     }
 
     case (HASH_IN): {
         if (strcmp(command->commandPtr, "IN") != 0) return ERR_INTPR;
 
+        newValues->usedArgs = 0;
         *commandCode = IN_C;
         return ERR_OK;
     }
@@ -605,16 +616,127 @@ err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode,
     return ERR_INTPR;
 }
 
+err_t GetPushPopCode(uint8_t defaultValue, Command * command, Argument * arg,
+                                           uint8_t * commandCode, ArgValues * argValues) {
+
+    ASSERT(command);
+    ASSERT(arg);
+    ASSERT(commandCode);
+    ASSERT(argValues);
+    ASSERT(arg->argPtr);
+
+    uint8_t defaultMask = defaultValue;
+
+    uint8_t constMask = 0x20;
+    uint8_t regMask   = 0x40;
+    uint8_t ramMask   = 0x80;
+
+    // push 10
+    // push AX
+    // push AX+10
+    // push [10]
+    // push [AX+10]
+
+    int bytesArg = 0;
+    int32_t newConst = 0;
+
+    // Constant
+    if (defaultValue != POP_C && sscanf(arg->argPtr, "%d%n", &newConst, &bytesArg) == 1
+                               && arg->argPtr[bytesArg] == '\0') {
+
+        *commandCode = (defaultMask | constMask);
+        argValues->value1 = newConst;
+        argValues->usedArgs = 1;
+
+        return ERR_OK;
+    }
+
+    //! For registers -----------------------------------------
+    char regName[3] = "";
+    bytesArg = 0;
+
+    if (sscanf(arg->argPtr, "%2[A-Z]%n", regName, &bytesArg) == 1 && bytesArg == 2) {
+        if (arg->argPtr[bytesArg] == '\0') {
+
+            Argument regArg = {.argPtr = regName, .argSize = strlen(regName)};
+            int regCode = GetRegCode(&regArg);
+            if (regCode == ERR_REGISTER) return ERR_REGISTER;
+
+            *commandCode = (defaultMask | regMask);
+
+            argValues->value1 = regCode;
+            argValues->usedArgs = 1;
+
+            return ERR_OK;
+        }
+    }
+    //! --------------------------------------------------------------
+
+    //! For ram ------------------------------------------------------
+    bytesArg = 0;
+    if (sscanf(arg->argPtr, "[%d]%n", &newConst, &bytesArg) == 1
+                            && arg->argPtr[bytesArg] == '\0') {
+
+        *commandCode = (defaultMask | ramMask | constMask);
+        argValues->value1 = newConst;
+        argValues->usedArgs = 1;
+
+        return ERR_OK;
+    }
+    // ---------------------------------------------------------------
+
+    //! For register + const  ----------------------------------------
+    bytesArg = 0;
+    regName[0] = '\0';
+    if (sscanf(arg->argPtr, "%2[A-Z]+%d%n", regName, &newConst, &bytesArg) == 2
+                            && arg->argPtr[bytesArg] == '\0') {
+
+        Argument regArg = {.argPtr = regName, .argSize = strlen(regName)};
+        int regCode = GetRegCode(&regArg);
+        if (regCode == ERR_REGISTER) return ERR_REGISTER;
+
+        *commandCode = (defaultMask | regMask | constMask);
+        
+        argValues->value1 = regCode;
+        argValues->value2 = newConst;
+        argValues->usedArgs = 2;
+
+        return ERR_OK;
+    }
+    // ---------------------------------------------------------------
+
+    //! For RAM, register and const
+    bytesArg = 0;
+    regName[0] = '\0';
+    if (sscanf(arg->argPtr, "[%2[A-Z]+%d]%n", regName, &newConst, &bytesArg) == 2
+                            && arg->argPtr[bytesArg] == '\0') {
+
+        Argument regArg = {.argPtr = regName, .argSize = strlen(regName)};
+        int regCode = GetRegCode(&regArg);
+        if (regCode == ERR_REGISTER) return ERR_REGISTER;
+
+        *commandCode = (defaultMask | regMask | constMask | ramMask);
+        argValues->value1 = regCode;
+        argValues->value2 = newConst;
+        argValues->usedArgs = 2;
+
+        return ERR_OK;
+    }
+
+    return ERR_ASM;
+
+}
+
 err_t WriteJumpMark(Marks * label, const char * arg, int * newValue, uint8_t * commandCode) {
 
     err_t markStat = WriteMarkIndex(label, arg, newValue);
 
     if (markStat == ERR_SKIP_ARG) {
-        *commandCode = SKIP_STEP;
-        return ERR_OK;
+        *newValue = 0;
     }
-
-    if (markStat != ERR_OK) return ERR_MARK;
+    else if (markStat != ERR_OK) {
+        return ERR_MARK;
+    }
 
     return ERR_OK;
 
