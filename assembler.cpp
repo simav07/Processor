@@ -13,6 +13,10 @@ typedef int err_t;
 #include "include/commands.h"
 #include "hashcommands.h"
 
+#define CODE_MASKS uint8_t constMask = 0x20; \
+              uint8_t regMask   = 0x40; \
+              uint8_t ramMask   = 0x80  \
+
 struct Marks {
     int * Label;
     size_t nMark  = 0;
@@ -78,6 +82,16 @@ err_t Assemble(Assembler * assembler);
 
 err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode,
                                   Argument * argument, ArgValues * newValues);
+
+err_t ConstCode(uint8_t defaultMask, uint8_t * commandCode, ArgValues * argValues, int32_t newConst);
+err_t RegCode(uint8_t defaultMask, uint8_t * commandCode, ArgValues * argValues, char * regName);
+err_t MemConstCode(uint8_t defaultMask, uint8_t * commandCode, ArgValues * argValues, int32_t * newConst);
+err_t RegMemCode(uint8_t defaultMask, uint8_t * commandCode, ArgValues * argValues, char * regName);
+err_t RegConstCode(uint8_t defaultMask, uint8_t * commandCode,
+                    ArgValues * argValues, char * regName, int32_t * newConst);
+err_t MemRegConstCode(uint8_t defaultMask, uint8_t * commandCode,
+                    ArgValues * argValues, char * regName, int32_t * newConst);
+
 int GetRegCode(Argument * arg2);
 
 err_t GetPushPopCode(uint8_t defaultValue, Command * command, Argument * arg,
@@ -634,9 +648,7 @@ err_t GetPushPopCode(uint8_t defaultValue, Command * command, Argument * arg,
 
     uint8_t defaultMask = defaultValue;
 
-    uint8_t constMask = 0x20;
-    uint8_t regMask   = 0x40;
-    uint8_t ramMask   = 0x80;
+    CODE_MASKS;
 
     // push 10      ConstCode();
     // push AX      RegCode();
@@ -652,46 +664,26 @@ err_t GetPushPopCode(uint8_t defaultValue, Command * command, Argument * arg,
     if (defaultValue != POP_C && sscanf(arg->argPtr, "%d%n", &newConst, &bytesArg) == 1
                                && arg->argPtr[bytesArg] == '\0') {
 
-        *commandCode = (defaultMask | constMask);
-        argValues->value1 = newConst;
-        argValues->usedArgs = 1;
-
-        return ERR_OK;
+        return ConstCode(defaultMask, commandCode, argValues, newConst);
+    
     }
 
     //! For registers -----------------------------------------
     char regName[3] = "";
     bytesArg = 0;
 
-    if (sscanf(arg->argPtr, "%2[A-ZX]%n", regName, &bytesArg) != -1 && bytesArg == 2) {
-
-        if (arg->argPtr[bytesArg] == '\0') {
-
-            Argument regArg = {.argPtr = regName, .argSize = strlen(regName)};
-
-            int regCode = GetRegCode(&regArg);
-            if (regCode == ERR_REGISTER) return ERR_REGISTER;
-
-            *commandCode = (defaultMask | regMask);
-
-            argValues->value1 = regCode;
-            argValues->usedArgs = 1;
-
-            return ERR_OK;
-        }
+    if (sscanf(arg->argPtr, "%2[A-ZX]%n", regName, &bytesArg) == 1
+                    && bytesArg == 2 && arg->argPtr[bytesArg] == '\0') {
+            
+            return RegCode(defaultMask, commandCode, argValues, regName);
     }
-    //! --------------------------------------------------------------
 
     //! For ram ------------------------------------------------------
     bytesArg = 0;
-    if (sscanf(arg->argPtr, "[%d]%n", &newConst, &bytesArg) != -1
+    if (sscanf(arg->argPtr, "[%d]%n", &newConst, &bytesArg) == 1
                             && arg->argPtr[bytesArg] == '\0') {
 
-        *commandCode = (defaultMask | ramMask | constMask);
-        argValues->value1 = newConst;
-        argValues->usedArgs = 1;
-
-        return ERR_OK;
+        return MemConstCode(defaultMask, commandCode, argValues, &newConst);
     }
     /*
     bytesArg = 0;
@@ -714,49 +706,23 @@ err_t GetPushPopCode(uint8_t defaultValue, Command * command, Argument * arg,
     // ---------------------------------------------------------------
 
     //! For register and ram -----------------------------------------
-
     bytesArg = 0;
     regName[0] = '\0';
     
     if (sscanf(arg->argPtr, "[%2[A-ZX]]%n", regName, &bytesArg) == 1 
                                         && arg->argPtr[bytesArg] == '\0') {
 
-        Argument regArg = {.argPtr = regName, .argSize = strlen(regName)};
-
-        int regCode = GetRegCode(&regArg);
-        if (regCode == ERR_REGISTER) return ERR_REGISTER;
-
-        *commandCode = (defaultMask | ramMask | regMask);
-        argValues->value1 = regCode;
-        // argValues->value2 = newConst;
-        argValues->usedArgs = 1;
-
-        return ERR_OK;
+        return RegMemCode(defaultMask, commandCode, argValues, regName);
     }
-
-    // return ERR_ASM;
-
-    // ---------------------------------------------------------------
 
     //! For register + const  ----------------------------------------
     bytesArg = 0;
     regName[0] = '\0';
-    sscanf(arg->argPtr, "%[A-Z]X+%d%n", regName, &newConst, &bytesArg);
+    sscanf(arg->argPtr, "%[A-ZX]+%d%n", regName, &newConst, &bytesArg);
     if (arg->argPtr[bytesArg] == '\0') {
 
-        Argument regArg = {.argPtr = regName, .argSize = strlen(regName)};
-        int regCode = GetRegCode(&regArg);
-        if (regCode == ERR_REGISTER) return ERR_REGISTER;
-
-        *commandCode = (defaultMask | regMask | constMask);
-        
-        argValues->value1 = regCode;
-        argValues->value2 = newConst;
-        argValues->usedArgs = 2;
-
-        return ERR_OK;
+        return RegConstCode(defaultMask, commandCode, argValues, regName, &newConst);
     }
-    // ---------------------------------------------------------------
 
     //! For RAM, register and const
     bytesArg = 0;
@@ -764,20 +730,134 @@ err_t GetPushPopCode(uint8_t defaultValue, Command * command, Argument * arg,
     if (sscanf(arg->argPtr, "[%[A-ZX]+%d]%n", regName, &newConst, &bytesArg) == 2
                             && arg->argPtr[bytesArg] == '\0') {
 
-        Argument regArg = {.argPtr = regName, .argSize = strlen(regName)};
-
-        int regCode = GetRegCode(&regArg);
-        if (regCode == ERR_REGISTER) return ERR_REGISTER;
-
-        *commandCode = (defaultMask | regMask | constMask | ramMask);
-        argValues->value1 = regCode;
-        argValues->value2 = newConst;
-        argValues->usedArgs = 2;
-
-        return ERR_OK;
+        return MemRegConstCode(defaultMask, commandCode, argValues, regName, &newConst);
     }
 
     return ERR_ASM;
+
+}
+
+err_t ConstCode(uint8_t defaultMask, uint8_t * commandCode, ArgValues * argValues, int32_t newConst) {
+
+    ASSERT(commandCode);
+    ASSERT(argValues);
+
+    CODE_MASKS;
+
+    *commandCode = (defaultMask | constMask);
+    
+    argValues->value1 = newConst;
+    argValues->usedArgs = 1;
+
+    return ERR_OK;
+}
+
+err_t RegCode(uint8_t defaultMask, uint8_t * commandCode, ArgValues * argValues, char * regName) {
+
+    ASSERT(commandCode);
+    ASSERT(argValues);
+    ASSERT(regName);
+
+    CODE_MASKS;
+
+    Argument regArg = {.argPtr = regName, .argSize = strlen(regName)};
+
+    int regCode = GetRegCode(&regArg);
+    if (regCode == ERR_REGISTER) return ERR_REGISTER;
+
+    *commandCode = (defaultMask | regMask);
+
+    argValues->value1 = regCode;
+    argValues->usedArgs = 1;
+    
+    return ERR_OK;
+
+}
+
+err_t MemConstCode(uint8_t defaultMask, uint8_t * commandCode, ArgValues * argValues, int32_t * newConst) {
+
+    ASSERT(commandCode);
+    ASSERT(argValues);
+    ASSERT(newConst);
+
+    CODE_MASKS;
+
+    *commandCode = (defaultMask | ramMask | constMask);
+    argValues->value1 = *newConst;
+    argValues->usedArgs = 1;
+    
+    return ERR_OK;
+
+}
+
+err_t RegMemCode(uint8_t defaultMask, uint8_t * commandCode, ArgValues * argValues, char * regName) {
+
+    ASSERT(commandCode);
+    ASSERT(argValues);
+    ASSERT(regName);
+    
+    CODE_MASKS;
+
+    Argument regArg = {.argPtr = regName, .argSize = strlen(regName)};
+
+    int regCode = GetRegCode(&regArg);
+    
+    if (regCode == ERR_REGISTER) return ERR_REGISTER;
+
+    *commandCode = (defaultMask | ramMask | regMask);
+    argValues->value1 = regCode;
+
+    argValues->usedArgs = 1;
+    
+    return ERR_OK;
+
+}
+
+err_t RegConstCode(uint8_t defaultMask, uint8_t * commandCode,
+                    ArgValues * argValues, char * regName, int32_t * newConst) {
+
+    ASSERT(commandCode);
+    ASSERT(argValues);
+    ASSERT(newConst);
+    ASSERT(regName);
+
+    CODE_MASKS;
+
+    Argument regArg = {.argPtr = regName, .argSize = strlen(regName)};
+    int regCode = GetRegCode(&regArg);
+    if (regCode == ERR_REGISTER) return ERR_REGISTER;
+    *commandCode = (defaultMask | regMask | constMask);
+    
+    argValues->value1 = regCode;
+    argValues->value2 = *newConst;
+    argValues->usedArgs = 2;
+
+    return ERR_OK;
+
+}
+
+err_t MemRegConstCode(uint8_t defaultMask, uint8_t * commandCode,
+                    ArgValues * argValues, char * regName, int32_t * newConst) {
+
+    ASSERT(commandCode);
+    ASSERT(argValues);
+    ASSERT(newConst);
+    ASSERT(regName);
+    
+    CODE_MASKS;
+
+    Argument regArg = {.argPtr = regName, .argSize = strlen(regName)};
+
+    int regCode = GetRegCode(&regArg);
+    if (regCode == ERR_REGISTER) return ERR_REGISTER;
+    
+    *commandCode = (defaultMask | regMask | constMask | ramMask);
+    
+    argValues->value1 = regCode;
+    argValues->value2 = *newConst;
+    argValues->usedArgs = 2;
+    
+    return ERR_OK;
 
 }
 

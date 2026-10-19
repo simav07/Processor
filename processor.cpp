@@ -261,9 +261,9 @@ err_t Interpreter(vmResource * virtualMachine) {
         if (result < 0 || result >= (stackElem_t)ramSize) return ERR_COMMAND;
         
         if (command == POP_C) {
-            printf("Pop command\n");
             err_t popStat = ERR_OK;
             stackElem_t var = StackPop(&(virtualMachine->stack), &popStat);
+            
             if (popStat != ERR_OK) return ERR_COMMAND;
             virtualMachine->RAM[(size_t)result] = var;
             return ERR_OK;
