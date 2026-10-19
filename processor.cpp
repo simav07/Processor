@@ -26,6 +26,9 @@ struct vmResource {
 
 const size_t ramSize = 200;
 
+const size_t picLength = 20;
+const size_t picWidth  = 10;
+
 //! Flag for byte code filename
 static const char * CMD_FLAG_BYTECODE = "--bytecode";
 
@@ -35,6 +38,8 @@ static const char * CMD_FLAG_BYTECODE = "--bytecode";
 static const char * FILE_STACKDUMP = "dump.txt";
 
 void VmDump(FILE * stream, vmResource * virtualMachine);
+
+void DrawRam(vmResource * virtualMachine);
 
 err_t VmCtor(const int argc, const char * argv[], vmResource * virtualMachine);
 void VmDtor(vmResource * virtualMachine);
@@ -132,6 +137,9 @@ err_t VmCtor(const int argc, const char * argv[], vmResource * virtualMachine) {
     stackElem_t * newMemPtr = (stackElem_t *)calloc(ramSize, sizeof(stackElem_t));
     if (!newMemPtr) return ERR_CTOR;
     virtualMachine->RAM = newMemPtr;
+    for (size_t i = 0; i < ramSize; i++) {
+        virtualMachine->RAM[i] = 0;
+    }
 
     int ctorStat1 = StackCtor(&(virtualMachine->stack), 10);
     if (ctorStat1 != ERR_OK) return ERR_VM_CTOR;
@@ -263,9 +271,12 @@ err_t Interpreter(vmResource * virtualMachine) {
         if (command == POP_C) {
             err_t popStat = ERR_OK;
             stackElem_t var = StackPop(&(virtualMachine->stack), &popStat);
-            
+
             if (popStat != ERR_OK) return ERR_COMMAND;
             virtualMachine->RAM[(size_t)result] = var;
+
+            DrawRam(virtualMachine);
+
             return ERR_OK;
         }
         result = virtualMachine->RAM[(size_t)result];
@@ -765,6 +776,25 @@ void VmDump(FILE * stream, vmResource * virtualMachine) {
     printf(YELLOW "\n-------------------------------------------------------------------------\n" RESET);
     printf("\n");
 
+}
+
+void DrawRam(vmResource * virtualMachine) {
+
+    ASSERT(virtualMachine);
+    
+    //system("cls");
+
+    for (size_t i = 0; i < picWidth; i++) {
+
+        for (size_t j = 0; j < picLength; j++) {
+
+            printf("%c", (int)(virtualMachine->RAM[i*picLength + j]));
+
+        }
+
+        printf("\n");
+
+    }
 }
 
 // IO functions ----------------------------------------------------

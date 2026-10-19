@@ -14,8 +14,8 @@ typedef int err_t;
 #include "hashcommands.h"
 
 #define CODE_MASKS uint8_t constMask = 0x20; \
-              uint8_t regMask   = 0x40; \
-              uint8_t ramMask   = 0x80  \
+                   uint8_t regMask   = 0x40; \
+                   uint8_t ramMask   = 0x80  \
 
 struct Marks {
     int * Label;
@@ -685,25 +685,6 @@ err_t GetPushPopCode(uint8_t defaultValue, Command * command, Argument * arg,
 
         return MemConstCode(defaultMask, commandCode, argValues, &newConst);
     }
-    /*
-    bytesArg = 0;
-    regName[0] = '\0';
-    if (sscanf(arg->argPtr, "%2[A-ZX]%n", regName, &newConst, &bytesArg) == 2
-                            && arg->argPtr[bytesArg] == '\0') {
-
-        Argument regArg = {.argPtr = regName, .argSize = strlen(regName)};
-        int regCode = GetRegCode(&regArg);
-        if (regCode == ERR_REGISTER) return ERR_REGISTER;
-
-        *commandCode = (defaultMask | regMask | constMask);
-        
-        argValues->value1 = regCode;
-        argValues->value2 = newConst;
-        argValues->usedArgs = 2;
-
-        return ERR_OK;
-    } */
-    // ---------------------------------------------------------------
 
     //! For register and ram -----------------------------------------
     bytesArg = 0;
