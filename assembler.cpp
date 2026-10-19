@@ -14,8 +14,7 @@ typedef int err_t;
 #include "hashcommands.h"
 
 struct Marks {
-    int Label[20] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-                     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+    int * Label;
     size_t nMark  = 0;
 };
 
@@ -62,6 +61,8 @@ char * BYTECODE_FILENAME = NULL;
 
 //! Max command length for commands
 const int MAX_COMMAND_LEN = 20;
+
+const size_t LABEL_SIZE = 100;
 
 const int POISON_VALUE = INT32_MAX;
 
@@ -138,6 +139,12 @@ err_t AsmCtor(const int argc, const char * argv[], Assembler * assembler) {
         printf("Error of reading asm source\n");
         return ERR_ASM_CTOR;
     }
+
+    int * newLabel = (int *)calloc(LABEL_SIZE, sizeof(int));
+    if (!newLabel) return ERR_CTOR;
+    assembler->label.Label = newLabel;
+
+    for (size_t i = 0; i < LABEL_SIZE; i++) { assembler->label.Label[i] = -1; }
 
     return ERR_OK;
 
@@ -382,7 +389,7 @@ err_t MakeMark(Marks * label, const char * arg1, const size_t currIndex) {
         return ERR_MARK;
     }
 
-    if (nMark < 0 || nMark >= 20) return ERR_MARK;
+    if (nMark < 0 || nMark >= LABEL_SIZE) return ERR_MARK;
 
     label->nMark = nMark;
     label->Label[nMark] = (int)currIndex;
@@ -404,7 +411,7 @@ err_t WriteMarkIndex(Marks * label, const char * arg2, int * newValue) {
 
     if (indexStat != 1) return ERR_SYNTAX;
 
-    if (index < 0 || index >= 20) return ERR_MARK;
+    if (index < 0 || index >= LABEL_SIZE) return ERR_MARK;
 
     int newIndex = label->Label[index];
     if (newIndex < 0) {
@@ -631,11 +638,12 @@ err_t GetPushPopCode(uint8_t defaultValue, Command * command, Argument * arg,
     uint8_t regMask   = 0x40;
     uint8_t ramMask   = 0x80;
 
-    // push 10
-    // push AX
-    // push AX+10
-    // push [10]
-    // push [AX+10]
+    // push 10      ConstCode();
+    // push AX      RegCode();
+    // push AX+10   RegConstCode();
+    // push [10]    MemConstCode();
+    // push [AX]    MemRegCode();
+    // push [AX+10] MemRegConstCode();
 
     int bytesArg = 0;
     int32_t newConst = 0;
@@ -655,10 +663,12 @@ err_t GetPushPopCode(uint8_t defaultValue, Command * command, Argument * arg,
     char regName[3] = "";
     bytesArg = 0;
 
-    if (sscanf(arg->argPtr, "%2[A-Z]%n", regName, &bytesArg) == 1 && bytesArg == 2) {
+    if (sscanf(arg->argPtr, "%2[A-ZX]%n", regName, &bytesArg) != -1 && bytesArg == 2) {
+
         if (arg->argPtr[bytesArg] == '\0') {
 
             Argument regArg = {.argPtr = regName, .argSize = strlen(regName)};
+
             int regCode = GetRegCode(&regArg);
             if (regCode == ERR_REGISTER) return ERR_REGISTER;
 
@@ -674,7 +684,7 @@ err_t GetPushPopCode(uint8_t defaultValue, Command * command, Argument * arg,
 
     //! For ram ------------------------------------------------------
     bytesArg = 0;
-    if (sscanf(arg->argPtr, "[%d]%n", &newConst, &bytesArg) == 1
+    if (sscanf(arg->argPtr, "[%d]%n", &newConst, &bytesArg) != -1
                             && arg->argPtr[bytesArg] == '\0') {
 
         *commandCode = (defaultMask | ramMask | constMask);
@@ -683,13 +693,56 @@ err_t GetPushPopCode(uint8_t defaultValue, Command * command, Argument * arg,
 
         return ERR_OK;
     }
+    /*
+    bytesArg = 0;
+    regName[0] = '\0';
+    if (sscanf(arg->argPtr, "%2[A-ZX]%n", regName, &newConst, &bytesArg) == 2
+                            && arg->argPtr[bytesArg] == '\0') {
+
+        Argument regArg = {.argPtr = regName, .argSize = strlen(regName)};
+        int regCode = GetRegCode(&regArg);
+        if (regCode == ERR_REGISTER) return ERR_REGISTER;
+
+        *commandCode = (defaultMask | regMask | constMask);
+        
+        argValues->value1 = regCode;
+        argValues->value2 = newConst;
+        argValues->usedArgs = 2;
+
+        return ERR_OK;
+    } */
+    // ---------------------------------------------------------------
+
+    //! For register and ram -----------------------------------------
+
+    bytesArg = 0;
+    regName[0] = '\0';
+    
+    if (sscanf(arg->argPtr, "[%2[A-ZX]]%n", regName, &bytesArg) == 1 
+                                        && arg->argPtr[bytesArg] == '\0') {
+
+        Argument regArg = {.argPtr = regName, .argSize = strlen(regName)};
+
+        int regCode = GetRegCode(&regArg);
+        if (regCode == ERR_REGISTER) return ERR_REGISTER;
+
+        *commandCode = (defaultMask | ramMask | regMask);
+        argValues->value1 = regCode;
+        // argValues->value2 = newConst;
+        argValues->usedArgs = 1;
+
+        return ERR_OK;
+    }
+
+    // return ERR_ASM;
+
     // ---------------------------------------------------------------
 
     //! For register + const  ----------------------------------------
     bytesArg = 0;
     regName[0] = '\0';
-    if (sscanf(arg->argPtr, "%2[A-Z]+%d%n", regName, &newConst, &bytesArg) == 2
-                            && arg->argPtr[bytesArg] == '\0') {
+    sscanf(arg->argPtr, "%[A-Z]X+%d%n", regName, &newConst, &bytesArg);
+    if (arg->argPtr[bytesArg] == '\0') {
 
         Argument regArg = {.argPtr = regName, .argSize = strlen(regName)};
         int regCode = GetRegCode(&regArg);
@@ -708,10 +761,11 @@ err_t GetPushPopCode(uint8_t defaultValue, Command * command, Argument * arg,
     //! For RAM, register and const
     bytesArg = 0;
     regName[0] = '\0';
-    if (sscanf(arg->argPtr, "[%2[A-Z]+%d]%n", regName, &newConst, &bytesArg) == 2
+    if (sscanf(arg->argPtr, "[%[A-ZX]+%d]%n", regName, &newConst, &bytesArg) == 2
                             && arg->argPtr[bytesArg] == '\0') {
 
         Argument regArg = {.argPtr = regName, .argSize = strlen(regName)};
+
         int regCode = GetRegCode(&regArg);
         if (regCode == ERR_REGISTER) return ERR_REGISTER;
 

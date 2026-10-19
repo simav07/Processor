@@ -61,7 +61,7 @@ err_t PushCom(vmResource * virtualMachine);
 
 err_t GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b);
 
-err_t PopR(vmResource * virtualMachine);
+err_t Pop(vmResource * virtualMachine, uint8_t flags);
 err_t PushR(vmResource * virtualMachine);
 
 err_t Jump(vmResource * virtualMachine, size_t jumpIndex);
@@ -261,6 +261,7 @@ err_t Interpreter(vmResource * virtualMachine) {
         if (result < 0 || result >= (stackElem_t)ramSize) return ERR_COMMAND;
         
         if (command == POP_C) {
+            printf("Pop command\n");
             err_t popStat = ERR_OK;
             stackElem_t var = StackPop(&(virtualMachine->stack), &popStat);
             if (popStat != ERR_OK) return ERR_COMMAND;
@@ -274,19 +275,24 @@ err_t Interpreter(vmResource * virtualMachine) {
 
         case PUSH_C: {
             if (!(flags & 0xE0)) return ERR_COMMAND;
-            if (flags & 0x80) return StackPush(&(virtualMachine->stack), result) == ERR_OK ? ERR_OK : ERR_PUSH_COM;
-            return StackPush(&(virtualMachine->stack), result) == ERR_OK ? ERR_OK : ERR_PUSH_COM;
+            if (flags & 0x80) return StackPush(&(virtualMachine->stack), result);
+            
+            return StackPush(&(virtualMachine->stack), result);
         }
 
         case POP_C: {
             if (flags & 0x80) return ERR_OK;
-            if (!(flags & 0x40) || (flags & 0x20)) return ERR_COMMAND;
+            // if (!(flags & 0x40) || (flags & 0x20)) return ERR_COMMAND;
+            
             int32_t regIndex = 0;
             memcpy(&regIndex, virtualMachine->byteCode + virtualMachine->pc + 1, sizeof(regIndex));
+
             if (regIndex < 0 || regIndex >= 5) return ERR_COMMAND;
             err_t popStat = ERR_OK;
             stackElem_t var = StackPop(&(virtualMachine->stack), &popStat);
+            
             if (popStat != ERR_OK) return ERR_COMMAND;
+            
             virtualMachine->regstr[regIndex] = var;
             return ERR_OK;
         }
@@ -337,19 +343,24 @@ err_t PushCom(vmResource * virtualMachine) {
 
 }
 
-err_t PopR(vmResource * virtualMachine) {
+err_t Pop(vmResource * virtualMachine, uint8_t flags) {
 
     ASSERT(virtualMachine);
 
-    int32_t registerIndex = GetInstructionArgument(virtualMachine);
-    if (registerIndex < 0 || registerIndex >= 5) return ERR_COMMAND;
+    if (flags & 0x80) return ERR_OK;
 
-    err_t popStat = 0;
+    if (!(flags & 0x40) || (flags & 0x20)) return ERR_COMMAND;
+    
+    int32_t regIndex = 0;
+    memcpy(&regIndex, virtualMachine->byteCode + virtualMachine->pc + 1, sizeof(regIndex));
+
+    if (regIndex < 0 || regIndex >= 5) return ERR_COMMAND;
+    err_t popStat = ERR_OK;
     stackElem_t var = StackPop(&(virtualMachine->stack), &popStat);
-
+    
     if (popStat != ERR_OK) return ERR_COMMAND;
-
-    virtualMachine->regstr[registerIndex] = var;
+    
+    virtualMachine->regstr[regIndex] = var;
     return ERR_OK;
 }
 
@@ -642,7 +653,6 @@ size_t GetByteCode(uint8_t ** byteCode, const char * byteCodeFilename) {
 
 }
 
-// ------------------------ CHANGE -------------------------------------------------
 size_t GetInstructionSize(vmResource * virtualMachine) {
 
     ASSERT(virtualMachine);
