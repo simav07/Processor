@@ -4,6 +4,8 @@
 #include "hashcommands.h"
 #include <string.h>
 
+const size_t nRegisters = 5;
+
 struct vmResource {
 
     stack_t stack = {};
@@ -19,22 +21,21 @@ struct vmResource {
     stack_t funcStack = {};
 
     //! Registers
-    stackElem_t regstr[5] = {};
+    stackElem_t regstr[nRegisters] = {};
 
-    stackElem_t * RAM;
+    stackElem_t * RAM; // naming
 };
 
-const size_t ramSize = 200;
+const size_t ramSize = 7000;
 
-const size_t picLength = 20;
-const size_t picWidth  = 10;
+const size_t picLength = 100;
+const size_t picWidth  = 50;
 
 //! Flag for byte code filename
 static const char * CMD_FLAG_BYTECODE = "--bytecode";
 
 //! #define VMDump for debug
 
-//! File for StackDump, there we can see what happening with stack
 static const char * FILE_STACKDUMP = "dump.txt";
 
 void VmDump(FILE * stream, vmResource * virtualMachine);
@@ -90,13 +91,14 @@ err_t Ret(vmResource * virtualMachine);
 err_t OutCom(vmResource * virtualMachine);
 // -------------------------------------------------------------------
 
+// main return 0 is ok 
 int main(const int argc, const char * argv[]) {
 
     printf("\nFile <%s>, [%s]\n", __FILE__, __TIME__);
 
     vmResource virtualMachine = {};
     
-    // constructor de facto 
+    // MENTOR: argc argv ???
     err_t ctorStat = VmCtor(argc, argv, &virtualMachine);
     if (ctorStat != ERR_OK) {
         // error description
@@ -111,6 +113,7 @@ int main(const int argc, const char * argv[]) {
         printf("ERROR OF VIRTUAL MACHINE\n");
         return false;
     }
+    DrawRam(&virtualMachine);
 
     VmDtor(&virtualMachine);
 
@@ -155,10 +158,6 @@ err_t VmCtor(const int argc, const char * argv[], vmResource * virtualMachine) {
 }
 
 void VmDtor(vmResource * virtualMachine) {
-
-    ASSERT(virtualMachine);
-    ASSERT(&virtualMachine->funcStack);
-    ASSERT(&virtualMachine->stack);
 
     fclose(virtualMachine->fileDump);
 
@@ -250,7 +249,7 @@ err_t Interpreter(vmResource * virtualMachine) {
 
         memcpy(&regIndex, virtualMachine->byteCode + argIndex, sizeof(regIndex));
         
-        if (regIndex < 0 || regIndex >= 5) return ERR_COMMAND;
+        if (regIndex < 0 || regIndex >= nRegisters) return ERR_COMMAND;
         
         result += virtualMachine->regstr[regIndex];
         argIndex += sizeof(int32_t);
@@ -275,7 +274,7 @@ err_t Interpreter(vmResource * virtualMachine) {
             if (popStat != ERR_OK) return ERR_COMMAND;
             virtualMachine->RAM[(size_t)result] = var;
 
-            DrawRam(virtualMachine);
+            // DrawRam(virtualMachine);
 
             return ERR_OK;
         }
@@ -309,7 +308,7 @@ err_t RunCommands(vmResource * virtualMachine, uint8_t command, stackElem_t resu
             int32_t regIndex = 0;
             memcpy(&regIndex, virtualMachine->byteCode + virtualMachine->pc + 1, sizeof(regIndex));
 
-            if (regIndex < 0 || regIndex >= 5) return ERR_COMMAND;
+            if (regIndex < 0 || regIndex >= nRegisters) return ERR_COMMAND;
             err_t popStat = ERR_OK;
             stackElem_t var = StackPop(&(virtualMachine->stack), &popStat);
             
@@ -367,7 +366,7 @@ err_t Pop(vmResource * virtualMachine, uint8_t flags) {
     int32_t regIndex = 0;
     memcpy(&regIndex, virtualMachine->byteCode + virtualMachine->pc + 1, sizeof(regIndex));
 
-    if (regIndex < 0 || regIndex >= 5) return ERR_COMMAND;
+    if (regIndex < 0 || regIndex >= nRegisters) return ERR_COMMAND;
     err_t popStat = ERR_OK;
     stackElem_t var = StackPop(&(virtualMachine->stack), &popStat);
     
@@ -382,7 +381,7 @@ err_t PushR(vmResource * virtualMachine) {
     ASSERT(virtualMachine);
 
     int32_t registerIndex = GetInstructionArgument(virtualMachine);
-    if (registerIndex < 0 || registerIndex >= 5) return ERR_COMMAND;
+    if (registerIndex < 0 || registerIndex >= nRegisters) return ERR_COMMAND;
 
     err_t pushStat = StackPush(&(virtualMachine->stack), virtualMachine->regstr[registerIndex]);
 
@@ -722,12 +721,12 @@ void VmDump(FILE * stream, vmResource * virtualMachine) {
     printf("virtual machine: [%p]\n", virtualMachine);
     printf("Registers:\n");
 
-    for (size_t i = 0; i < 5; i++) {
+    for (size_t i = 0; i < nRegisters; i++) {
         printf("[%1s%d] ", "R", i);
     }
     printf("\n");
 
-    for (size_t i = 0; i < 5; i++) {
+    for (size_t i = 0; i < nRegisters; i++) {
 
         if (virtualMachine->regstr[i] != 0) {
             printf(BOLD_GREEN "[%2lg] " RESET, virtualMachine->regstr[i]);
@@ -790,7 +789,14 @@ void DrawRam(vmResource * virtualMachine) {
 
         for (size_t j = 0; j < picLength; j++) {
 
-            printf("%c", (int)(virtualMachine->RAM[i*picLength + j]));
+            int elem = (int)(virtualMachine->RAM[i*picLength + j]);
+
+            if (elem == 0) {
+                printf(".");
+                continue;
+            }
+
+            printf("%c", elem);
 
         }
 
