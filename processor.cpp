@@ -1,8 +1,14 @@
+typedef double ramElem_t;
+
 #include "include/stack.h"
 #include "include/io.h"
 #include "include/commands.h"
 #include "hashcommands.h"
 #include <string.h>
+#include <time.h>
+#include <windows.h>
+
+#define sleep_ms(ms) Sleep((DWORD)(ms))
 
 const size_t nRegisters = 5;
 
@@ -23,7 +29,7 @@ struct vmResource {
     //! Registers
     stackElem_t regstr[nRegisters] = {};
 
-    stackElem_t * RAM; // naming
+    ramElem_t * RAM;
 };
 
 const size_t ramSize = 7000;
@@ -78,7 +84,7 @@ err_t JBE(vmResource * virtualMachine);
 err_t JE(vmResource * virtualMachine);
 err_t JNE(vmResource * virtualMachine);
 
-err_t IN(vmResource * virtualMachine);
+err_t In(vmResource * virtualMachine);
 
 err_t AddCom(vmResource * virtualMachine);
 err_t SubCom(vmResource * virtualMachine);
@@ -90,6 +96,8 @@ err_t Ret(vmResource * virtualMachine);
 
 err_t OutCom(vmResource * virtualMachine);
 // -------------------------------------------------------------------
+
+err_t PlayVideo(vmResource * virtualMachine, const char * filename, double fps);
 
 // main return 0 is ok 
 int main(const int argc, const char * argv[]) {
@@ -113,7 +121,8 @@ int main(const int argc, const char * argv[]) {
         printf("ERROR OF VIRTUAL MACHINE\n");
         return false;
     }
-    DrawRam(&virtualMachine);
+    PlayVideo(&virtualMachine, "bad_apple.bin", 30);
+    // DrawRam(&virtualMachine);
 
     VmDtor(&virtualMachine);
 
@@ -325,7 +334,7 @@ err_t RunCommands(vmResource * virtualMachine, uint8_t command, stackElem_t resu
         case JBE_C:  return JBE(virtualMachine);
         case JE_C:   return JE(virtualMachine);
         case JNE_C:  return JNE(virtualMachine);
-        case IN_C:   return IN(virtualMachine);
+        case IN_C:   return In(virtualMachine);
         case RET_C:  return Ret(virtualMachine);
         case CALL_C: return Call(virtualMachine);
         case ADD_C:  return AddCom(virtualMachine);
@@ -513,7 +522,7 @@ err_t JNE(vmResource * virtualMachine) {
     return ERR_OK;
 }
 
-err_t IN(vmResource * virtualMachine) {
+err_t In(vmResource * virtualMachine) {
 
     ASSERT(virtualMachine);
 
@@ -779,32 +788,6 @@ void VmDump(FILE * stream, vmResource * virtualMachine) {
 
 }
 
-void DrawRam(vmResource * virtualMachine) {
-
-    ASSERT(virtualMachine);
-    
-    system("cls");
-
-    for (size_t i = 0; i < picWidth; i++) {
-
-        for (size_t j = 0; j < picLength; j++) {
-
-            int elem = (int)(virtualMachine->RAM[i*picLength + j]);
-
-            if (elem == 0) {
-                printf(".");
-                continue;
-            }
-
-            printf("%c", elem);
-
-        }
-
-        printf("\n");
-
-    }
-}
-
 // IO functions ----------------------------------------------------
 err_t ArgvParser(const int argc, const char * argv[], char * readFromFile) {
 
@@ -825,4 +808,79 @@ err_t ArgvParser(const int argc, const char * argv[], char * readFromFile) {
 
     printf("\nError of reading stdin\n");
     return ERR_FILEOPEN;
+}
+
+void DrawRam(vmResource * virtualMachine) {
+
+    ASSERT(virtualMachine);
+    
+    // system("cls");
+    char screenBuffer[picLength * picWidth + picWidth + 1] = "";
+    size_t bufIndex = 0;
+
+    for (size_t i = 0; i < picWidth; i++) {
+
+        for (size_t j = 0; j < picLength; j++) {
+
+            int elem = (int)(virtualMachine->RAM[i*picLength + j]);
+
+            if (elem == 0) {
+                screenBuffer[bufIndex++] = ' ';
+                
+                continue;
+            }
+
+            screenBuffer[bufIndex++] = '&';
+
+        }
+
+        screenBuffer[bufIndex++] = '\n';
+
+    }
+    
+    screenBuffer[bufIndex] = '\0';
+    fwrite(screenBuffer, sizeof(char), bufIndex, stdout);
+    fflush(stdout);
+}
+
+err_t PlayVideo(vmResource * virtualMachine, const char * filename, double fps) {
+
+    ASSERT(virtualMachine);
+    ASSERT(filename);
+
+    if (fps <= 0) return ERR_COMMAND;
+
+    FILE * videoFile = fopen(filename, "rb");
+    if (!videoFile) return ERR_FILEOPEN;
+
+    const size_t frameSize = picLength * picWidth;
+    uint8_t frame[picLength * picWidth] = {};
+
+    double targetFrameTimeMs = 1000.0 / fps;
+
+    printf("\033[?25l");
+
+    while (fread(frame, sizeof(uint8_t), frameSize, videoFile) == frameSize) {
+        
+        clock_t startClock = clock();
+
+        for (size_t i = 0; i < frameSize; i++) {
+            virtualMachine->RAM[i] = frame[i];
+        }
+
+        DrawRam(virtualMachine);
+
+        clock_t endClock = clock();
+        double elapsedMs = ((double)(endClock - startClock) * 1000.0) / CLOCKS_PER_SEC;
+
+        if (elapsedMs < targetFrameTimeMs) {
+            double remainingTimeMs = targetFrameTimeMs - elapsedMs;
+            sleep_ms(remainingTimeMs);
+        }
+    }
+
+    printf("\033[?25h");
+
+    fclose(videoFile);
+    return ERR_OK;
 }
