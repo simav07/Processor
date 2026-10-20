@@ -58,8 +58,8 @@ int32_t GetInstructionArgument(vmResource * virtualMachine);
 
 
 //! RunCommands: run commands
-err_t RunCommands(vmResource * virtualMachine);
 err_t Interpreter(vmResource * virtualMachine);
+err_t RunCommands(vmResource * virtualMachine, uint8_t command, stackElem_t result);
 
 //! Commands for virtual machine -------------------------------------
 err_t PushCom(vmResource * virtualMachine);
@@ -282,6 +282,17 @@ err_t Interpreter(vmResource * virtualMachine) {
         result = virtualMachine->RAM[(size_t)result];
     }
 
+    return RunCommands(virtualMachine, command, result);
+}
+
+err_t RunCommands(vmResource * virtualMachine, uint8_t command, stackElem_t result) {
+
+    ASSERT(virtualMachine);
+
+    if (virtualMachine->pc >= virtualMachine->byteCodeLen) return ERR_PROCESSING;
+
+    uint8_t flags = virtualMachine->byteCode[virtualMachine->pc];
+
     switch (command) {
 
         case PUSH_C: {
@@ -327,15 +338,6 @@ err_t Interpreter(vmResource * virtualMachine) {
 
         default:     return ERR_COMMAND;
     }
-}
-
-err_t RunCommands(vmResource * virtualMachine) {
-
-    ASSERT(virtualMachine);
-
-    if (virtualMachine->pc >= virtualMachine->byteCodeLen) return ERR_PROCESSING;
-
-    return Interpreter(virtualMachine);
 
 }
 
@@ -782,7 +784,7 @@ void DrawRam(vmResource * virtualMachine) {
 
     ASSERT(virtualMachine);
     
-    //system("cls");
+    system("cls");
 
     for (size_t i = 0; i < picWidth; i++) {
 
