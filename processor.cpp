@@ -8,8 +8,6 @@ typedef double ramElem_t;
 #include <time.h>
 #include <windows.h>
 
-#define sleep_ms(ms) Sleep((DWORD)(ms))
-
 const size_t nRegisters = 5;
 
 struct vmResource {
@@ -65,13 +63,11 @@ int32_t GetInstructionArgument(vmResource * virtualMachine);
 
 
 //! Reading command code: analysis of flags, args
-err_t ReadCommand(vmResource * virtualMachine, uint8_t * command, stackElem_t * result);
+err_t ReadCommand(vmResource * virtualMachine, size_t * instrSize, uint8_t * command, stackElem_t * result);
 //! Run commands
 err_t RunCommand(vmResource * virtualMachine, uint8_t command, stackElem_t result);
 
 //! Commands for virtual machine -------------------------------------
-err_t PushCom(vmResource * virtualMachine);
-
 err_t GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b);
 
 err_t Pop(vmResource * virtualMachine, uint8_t flags, stackElem_t result);
@@ -98,9 +94,6 @@ err_t Ret(vmResource * virtualMachine);
 err_t OutCom(vmResource * virtualMachine);
 // -------------------------------------------------------------------
 
-err_t PlayVideo(vmResource * virtualMachine, const char * filename, double fps);
-
-// main return 0 is ok 
 int main(const int argc, const char * argv[]) {
 
     printf("\nFile <%s>, [%s]\n", __FILE__, __TIME__);
@@ -123,11 +116,11 @@ int main(const int argc, const char * argv[]) {
         return false;
     }
     // PlayVideo(&virtualMachine, "bad_apple.bin", 30);
-    DrawRam(&virtualMachine);
+    // DrawRam(&virtualMachine);
 
     VmDtor(&virtualMachine);
 
-    return true;
+    return 0;
 }
 
 err_t VmCtor(const int argc, const char * argv[], vmResource * virtualMachine) {
@@ -212,22 +205,13 @@ err_t RunVirtualMachine(vmResource * virtualMachine) {
         if ((virtualMachine->byteCode[virtualMachine->pc] & 0x1F) == HLT_C) return ERR_OK;
 
         virtualMachine->pcChanged = false;
-        size_t instrSize = GetInstructionSize(virtualMachine);
-
-        if (instrSize == 0 || instrSize > virtualMachine->byteCodeLen - virtualMachine->pc) {
-            printf(BOLD_RED "Incorrect instruction at pc=%zu\n" RESET, virtualMachine->pc);
-            return ERR_PROCESSING;
-        }
+        size_t instrSize = 0;
 
         uint8_t command = virtualMachine->byteCode[virtualMachine->pc] & 0x1F;
         stackElem_t result = 0;
 
-        err_t interpreterStat = ReadCommand(virtualMachine, &command, &result);
-        if (interpreterStat != ERR_OK) {
-            printf(RED "ERROR_PROCESSING: command at pc=%zu, error=%d\n" RESET,
-                                                virtualMachine->pc, interpreterStat);
-            return interpreterStat;
-        }
+        err_t interpreterStat = ReadCommand(virtualMachine, &instrSize, &command, &result);
+        if (interpreterStat != ERR_OK)  return interpreterStat;
 
         err_t runStat = RunCommand(virtualMachine, command, result);
         if (runStat != ERR_OK) return ERR_PROCESSING;
@@ -244,9 +228,11 @@ err_t RunVirtualMachine(vmResource * virtualMachine) {
     return ERR_PROCESSING;
 }
 
-err_t ReadCommand(vmResource * virtualMachine, uint8_t * command, stackElem_t * result) {
+err_t ReadCommand(vmResource * virtualMachine, size_t * instrSize, uint8_t * command, stackElem_t * result) {
 
     ASSERT(virtualMachine);
+
+    *instrSize = GetInstructionSize(virtualMachine);
 
     uint8_t flags = virtualMachine->byteCode[virtualMachine->pc];
     
@@ -274,14 +260,6 @@ err_t ReadCommand(vmResource * virtualMachine, uint8_t * command, stackElem_t * 
 
         *result += value;
         argIndex += sizeof(int32_t);
-    }
-
-    if (flags & 0x80) {
-        if (*result < 0 || *result >= (stackElem_t)ramSize) return ERR_COMMAND;
-        
-        if (*command != POP_C) {
-            *result = virtualMachine->RAM[(size_t)*result];
-        }
     }
 
     return ERR_OK;
@@ -327,17 +305,6 @@ err_t RunCommand(vmResource * virtualMachine, uint8_t command, stackElem_t resul
 // Functions for processor
 //------------------------------------------------------------------
 
-err_t PushCom(vmResource * virtualMachine) {
-
-    ASSERT(virtualMachine);
-
-    err_t pushStat = StackPush(&(virtualMachine->stack), GetInstructionArgument(virtualMachine));
-
-    if (pushStat != ERR_OK) return ERR_COMMAND;
-    return ERR_OK;
-
-}
-
 err_t Pop(vmResource * virtualMachine, uint8_t flags, stackElem_t result) {
 
     ASSERT(virtualMachine);
@@ -358,8 +325,7 @@ err_t Pop(vmResource * virtualMachine, uint8_t flags, stackElem_t result) {
         if ((size_t)result == 6999) {
             
             DrawRam(virtualMachine); 
-
-            Sleep(33); // !!!!
+            Sleep(33); // experimental value
 
         }
 
@@ -387,18 +353,15 @@ err_t Push(vmResource * virtualMachine, uint8_t flags, stackElem_t result) {
 
     ASSERT(virtualMachine);
 
+    CODE_MASKS;
+
     if (!(flags & 0xE0)) return ERR_COMMAND;
+
+    if (flags & ramMask) {
+        return StackPush(&(virtualMachine->stack), virtualMachine->RAM[(size_t)result]);
+    }
     
     return StackPush(&(virtualMachine->stack), result);
-
-    /*
-    int32_t registerIndex = GetInstructionArgument(virtualMachine);
-    if (registerIndex < 0 || registerIndex >= nRegisters) return ERR_COMMAND;
-
-    err_t pushStat = StackPush(&(virtualMachine->stack), virtualMachine->regstr[registerIndex]);
-
-    if (pushStat != ERR_OK) return ERR_PUSH_COM;
-    return ERR_OK; */
 }
 
 err_t Jump(vmResource * virtualMachine, size_t jumpIndex) {
@@ -666,9 +629,8 @@ size_t GetByteCode(uint8_t ** byteCode, const char * byteCodeFilename) {
     ASSERT(byteCode);
     ASSERT(byteCodeFilename);
 
-    FileStat binFile = {}; // rename
+    FileStat binFile = {};
 
-    //if (!GetAsmFilenameStd(argc, argv, &txtFile)) ASSERT(0);
     if (!ReadTxtFile(byteCodeFilename, "rb", &binFile)) ASSERT(0);
 
     *byteCode = (uint8_t *)binFile.text_ptr;
@@ -818,7 +780,7 @@ void DrawRam(vmResource * virtualMachine) {
     ASSERT(virtualMachine);
     
     // system("cls");
-    char screenBuffer[picLength * picWidth + picWidth + 1] = ""; // make not local
+    char screenBuffer[picLength * picWidth + picWidth + 1] = "";
     size_t bufIndex = 0;
 
     for (size_t i = 0; i < picWidth; i++) {
@@ -844,46 +806,4 @@ void DrawRam(vmResource * virtualMachine) {
     screenBuffer[bufIndex] = '\0';
     fwrite(screenBuffer, sizeof(char), bufIndex, stdout);
     fflush(stdout);
-}
-
-err_t PlayVideo(vmResource * virtualMachine, const char * filename, double fps) {
-
-    ASSERT(virtualMachine);
-    ASSERT(filename);
-
-    if (fps <= 0) return ERR_COMMAND;
-
-    FILE * videoFile = fopen(filename, "rb");
-    if (!videoFile) return ERR_FILEOPEN;
-
-    const size_t frameSize = picLength * picWidth;
-    uint8_t frame[picLength * picWidth] = {};
-
-    double targetFrameTimeMs = 1000.0 / fps;
-
-    printf("\033[?25l");
-
-    while (fread(frame, sizeof(uint8_t), frameSize, videoFile) == frameSize) {
-        
-        clock_t startClock = clock();
-
-        for (size_t i = 0; i < frameSize; i++) {
-            virtualMachine->RAM[i] = frame[i];
-        }
-
-        DrawRam(virtualMachine);
-
-        clock_t endClock = clock();
-        double elapsedMs = ((double)(endClock - startClock) * 1000.0) / CLOCKS_PER_SEC;
-
-        if (elapsedMs < targetFrameTimeMs) {
-            double remainingTimeMs = targetFrameTimeMs - elapsedMs;
-            sleep_ms(remainingTimeMs);
-        }
-    }
-
-    printf("\033[?25h");
-
-    fclose(videoFile);
-    return ERR_OK;
 }
