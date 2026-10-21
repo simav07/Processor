@@ -123,7 +123,7 @@ int main(const int argc, const char * argv[]) {
         return false;
     }
     // PlayVideo(&virtualMachine, "bad_apple.bin", 30);
-    // DrawRam(&virtualMachine);
+    DrawRam(&virtualMachine);
 
     VmDtor(&virtualMachine);
 
@@ -358,6 +358,15 @@ err_t Pop(vmResource * virtualMachine, uint8_t flags, stackElem_t result) {
         
         virtualMachine->RAM[(size_t)result] = var;
         // DrawRam(virtualMachine)
+
+        if ((size_t)result == 6999) {
+            
+            DrawRam(virtualMachine); 
+
+            Sleep(33); // !!!!
+
+        }
+
         return ERR_OK;
     }
 
