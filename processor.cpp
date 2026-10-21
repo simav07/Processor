@@ -64,9 +64,10 @@ size_t GetInstructionSize(vmResource * virtualMachine);
 int32_t GetInstructionArgument(vmResource * virtualMachine);
 
 
-//! RunCommands: run commands
-err_t Interpreter(vmResource * virtualMachine);
-err_t RunCommands(vmResource * virtualMachine, uint8_t command, stackElem_t result);
+//! Reading command code: analysis of flags, args
+err_t ReadCommand(vmResource * virtualMachine, uint8_t * command, stackElem_t * result);
+//! Run commands
+err_t RunCommand(vmResource * virtualMachine, uint8_t command, stackElem_t result);
 
 //! Commands for virtual machine -------------------------------------
 err_t PushCom(vmResource * virtualMachine);
@@ -218,13 +219,18 @@ err_t RunVirtualMachine(vmResource * virtualMachine) {
             return ERR_PROCESSING;
         }
 
-        err_t interpreterStat = Interpreter(virtualMachine);
+        uint8_t command = virtualMachine->byteCode[virtualMachine->pc] & 0x1F;
+        stackElem_t result = 0;
 
+        err_t interpreterStat = ReadCommand(virtualMachine, &command, &result);
         if (interpreterStat != ERR_OK) {
             printf(RED "ERROR_PROCESSING: command at pc=%zu, error=%d\n" RESET,
                                                 virtualMachine->pc, interpreterStat);
             return interpreterStat;
         }
+
+        err_t runStat = RunCommand(virtualMachine, command, result);
+        if (runStat != ERR_OK) return ERR_PROCESSING;
 
         #ifdef VMDump
         VmDump(stdout, virtualMachine);
@@ -238,15 +244,15 @@ err_t RunVirtualMachine(vmResource * virtualMachine) {
     return ERR_PROCESSING;
 }
 
-err_t Interpreter(vmResource * virtualMachine) {
+err_t ReadCommand(vmResource * virtualMachine, uint8_t * command, stackElem_t * result) {
 
     ASSERT(virtualMachine);
 
-    uint8_t command = virtualMachine->byteCode[virtualMachine->pc] & 0x1F;
+    // uint8_t command = virtualMachine->byteCode[virtualMachine->pc] & 0x1F;
 
     uint8_t flags = virtualMachine->byteCode[virtualMachine->pc];
     
-    stackElem_t result = 0;
+    // stackElem_t result = 0;
     size_t argIndex = virtualMachine->pc + 1;
     int32_t value = 0;
 
@@ -260,7 +266,7 @@ err_t Interpreter(vmResource * virtualMachine) {
         
         if (regIndex < 0 || regIndex >= nRegisters) return ERR_COMMAND;
         
-        result += virtualMachine->regstr[regIndex];
+        *result += virtualMachine->regstr[regIndex];
         argIndex += sizeof(int32_t);
     }
 
@@ -269,22 +275,23 @@ err_t Interpreter(vmResource * virtualMachine) {
 
         memcpy(&value, virtualMachine->byteCode + argIndex, sizeof(value));
 
-        result += value;
+        *result += value;
         argIndex += sizeof(int32_t);
     }
 
     if (flags & 0x80) {
-        if (result < 0 || result >= (stackElem_t)ramSize) return ERR_COMMAND;
+        if (*result < 0 || *result >= (stackElem_t)ramSize) return ERR_COMMAND;
         
-        if (command != POP_C) {
-            result = virtualMachine->RAM[(size_t)result];
+        if (*command != POP_C) {
+            *result = virtualMachine->RAM[(size_t)*result];
         }
     }
 
-    return RunCommands(virtualMachine, command, result);
+    return ERR_OK;
+
 }
 
-err_t RunCommands(vmResource * virtualMachine, uint8_t command, stackElem_t result) {
+err_t RunCommand(vmResource * virtualMachine, uint8_t command, stackElem_t result) {
 
     ASSERT(virtualMachine);
 
