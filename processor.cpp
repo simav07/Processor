@@ -248,11 +248,8 @@ err_t ReadCommand(vmResource * virtualMachine, uint8_t * command, stackElem_t * 
 
     ASSERT(virtualMachine);
 
-    // uint8_t command = virtualMachine->byteCode[virtualMachine->pc] & 0x1F;
-
     uint8_t flags = virtualMachine->byteCode[virtualMachine->pc];
     
-    // stackElem_t result = 0;
     size_t argIndex = virtualMachine->pc + 1;
     int32_t value = 0;
 
@@ -301,9 +298,8 @@ err_t RunCommand(vmResource * virtualMachine, uint8_t command, stackElem_t resul
 
     switch (command) {
 
-        case PUSH_C: return Push(virtualMachine, flags, result); // <<<<<<<<<  ^-^
-
-        case POP_C:  return Pop(virtualMachine, flags, result);  // <<<<<<<<<  ^-^
+        case PUSH_C: return Push(virtualMachine, flags, result);
+        case POP_C:  return Pop(virtualMachine, flags, result);
 
         case JUMP_C: return Jump(virtualMachine, (size_t)GetInstructionArgument(virtualMachine));
         case JA_C:   return JA(virtualMachine);

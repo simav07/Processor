@@ -61,7 +61,7 @@ const char * PROG_BYTECODE_FILE = "bcode.bin";
 char * BYTECODE_FILENAME = NULL;
 
 //! Max command length for commands
-const int MAX_COMMAND_LEN = 20;
+const int MAX_COMMAND_LEN = 256;
 
 const size_t LABEL_SIZE = 100;
 
