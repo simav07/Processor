@@ -1,6 +1,10 @@
 #ifndef COMMANDS
 #define COMMANDS
 
+#define CODE_MASKS uint8_t constMask = 0x20; \
+                   uint8_t regMask   = 0x40; \
+                   uint8_t ramMask   = 0x80  \
+
 //! Commands for virtual machine
 enum COMMANDS {
     PUSH_C    = 1,
@@ -9,7 +13,7 @@ enum COMMANDS {
     DIV_C     = 4,
     MUL_C     = 5,
     PUSH_R    = 6,
-    POP_R     = 7,
+    POP_C     = 7,  // POP_R
     SKIP_STEP = 8,
     JUMP_C    = 9,
     JA_C      = 10,

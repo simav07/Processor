@@ -13,9 +13,6 @@ typedef int err_t;
 #include "include/commands.h"
 #include "hashcommands.h"
 
-#define CODE_MASKS uint8_t constMask = 0x20; \
-                   uint8_t regMask   = 0x40; \
-                   uint8_t ramMask   = 0x80  \
 
 struct Marks {
     int * Label;

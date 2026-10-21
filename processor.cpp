@@ -73,8 +73,8 @@ err_t PushCom(vmResource * virtualMachine);
 
 err_t GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b);
 
-err_t Pop(vmResource * virtualMachine, uint8_t flags);
-err_t PushR(vmResource * virtualMachine);
+err_t Pop(vmResource * virtualMachine, uint8_t flags, stackElem_t result);
+err_t Push(vmResource * virtualMachine, uint8_t flags, stackElem_t result);
 
 err_t Jump(vmResource * virtualMachine, size_t jumpIndex);
 err_t JA(vmResource * virtualMachine);
@@ -121,7 +121,7 @@ int main(const int argc, const char * argv[]) {
         printf("ERROR OF VIRTUAL MACHINE\n");
         return false;
     }
-    PlayVideo(&virtualMachine, "bad_apple.bin", 30);
+    // PlayVideo(&virtualMachine, "bad_apple.bin", 30);
     // DrawRam(&virtualMachine);
 
     VmDtor(&virtualMachine);
@@ -276,18 +276,9 @@ err_t Interpreter(vmResource * virtualMachine) {
     if (flags & 0x80) {
         if (result < 0 || result >= (stackElem_t)ramSize) return ERR_COMMAND;
         
-        if (command == POP_C) {
-            err_t popStat = ERR_OK;
-            stackElem_t var = StackPop(&(virtualMachine->stack), &popStat);
-
-            if (popStat != ERR_OK) return ERR_COMMAND;
-            virtualMachine->RAM[(size_t)result] = var;
-
-            // DrawRam(virtualMachine);
-
-            return ERR_OK;
+        if (command != POP_C) {
+            result = virtualMachine->RAM[(size_t)result];
         }
-        result = virtualMachine->RAM[(size_t)result];
     }
 
     return RunCommands(virtualMachine, command, result);
@@ -303,29 +294,9 @@ err_t RunCommands(vmResource * virtualMachine, uint8_t command, stackElem_t resu
 
     switch (command) {
 
-        case PUSH_C: {
-            if (!(flags & 0xE0)) return ERR_COMMAND;
-            if (flags & 0x80) return StackPush(&(virtualMachine->stack), result);
-            
-            return StackPush(&(virtualMachine->stack), result);
-        }
+        case PUSH_C: return Push(virtualMachine, flags, result); // <<<<<<<<<  ^-^
 
-        case POP_C: {
-            if (flags & 0x80) return ERR_OK;
-            // if (!(flags & 0x40) || (flags & 0x20)) return ERR_COMMAND;
-            
-            int32_t regIndex = 0;
-            memcpy(&regIndex, virtualMachine->byteCode + virtualMachine->pc + 1, sizeof(regIndex));
-
-            if (regIndex < 0 || regIndex >= nRegisters) return ERR_COMMAND;
-            err_t popStat = ERR_OK;
-            stackElem_t var = StackPop(&(virtualMachine->stack), &popStat);
-            
-            if (popStat != ERR_OK) return ERR_COMMAND;
-            
-            virtualMachine->regstr[regIndex] = var;
-            return ERR_OK;
-        }
+        case POP_C:  return Pop(virtualMachine, flags, result);  // <<<<<<<<<  ^-^
 
         case JUMP_C: return Jump(virtualMachine, (size_t)GetInstructionArgument(virtualMachine));
         case JA_C:   return JA(virtualMachine);
@@ -364,19 +335,34 @@ err_t PushCom(vmResource * virtualMachine) {
 
 }
 
-err_t Pop(vmResource * virtualMachine, uint8_t flags) {
+err_t Pop(vmResource * virtualMachine, uint8_t flags, stackElem_t result) {
 
     ASSERT(virtualMachine);
 
-    if (flags & 0x80) return ERR_OK;
+    CODE_MASKS;
+        
+    err_t popStat = ERR_OK;
+    
+    //! Pop into RAM
+    if (flags & ramMask) {
+        stackElem_t var = StackPop(&(virtualMachine->stack), &popStat);
+        
+        if (popStat != ERR_OK) return ERR_COMMAND;
+        
+        virtualMachine->RAM[(size_t)result] = var;
+        // DrawRam(virtualMachine)
+        return ERR_OK;
+    }
 
-    if (!(flags & 0x40) || (flags & 0x20)) return ERR_COMMAND;
+    //! POP into register
+    if (!(flags & regMask) || (flags & constMask)) return ERR_COMMAND;
     
     int32_t regIndex = 0;
     memcpy(&regIndex, virtualMachine->byteCode + virtualMachine->pc + 1, sizeof(regIndex));
 
     if (regIndex < 0 || regIndex >= nRegisters) return ERR_COMMAND;
-    err_t popStat = ERR_OK;
+
+    popStat = ERR_OK;
     stackElem_t var = StackPop(&(virtualMachine->stack), &popStat);
     
     if (popStat != ERR_OK) return ERR_COMMAND;
@@ -385,17 +371,22 @@ err_t Pop(vmResource * virtualMachine, uint8_t flags) {
     return ERR_OK;
 }
 
-err_t PushR(vmResource * virtualMachine) {
+err_t Push(vmResource * virtualMachine, uint8_t flags, stackElem_t result) {
 
     ASSERT(virtualMachine);
 
+    if (!(flags & 0xE0)) return ERR_COMMAND;
+    
+    return StackPush(&(virtualMachine->stack), result);
+
+    /*
     int32_t registerIndex = GetInstructionArgument(virtualMachine);
     if (registerIndex < 0 || registerIndex >= nRegisters) return ERR_COMMAND;
 
     err_t pushStat = StackPush(&(virtualMachine->stack), virtualMachine->regstr[registerIndex]);
 
     if (pushStat != ERR_OK) return ERR_PUSH_COM;
-    return ERR_OK;
+    return ERR_OK; */
 }
 
 err_t Jump(vmResource * virtualMachine, size_t jumpIndex) {
@@ -815,7 +806,7 @@ void DrawRam(vmResource * virtualMachine) {
     ASSERT(virtualMachine);
     
     // system("cls");
-    char screenBuffer[picLength * picWidth + picWidth + 1] = "";
+    char screenBuffer[picLength * picWidth + picWidth + 1] = ""; // make not local
     size_t bufIndex = 0;
 
     for (size_t i = 0; i < picWidth; i++) {
