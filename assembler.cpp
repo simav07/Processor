@@ -13,6 +13,12 @@ typedef int err_t;
 #include "include/commands.h"
 #include "hashcommands.h"
 
+#ifdef Wa
+#define CODE_LISTING(...) AsmListing(__VA_ARGS__)
+#else
+#define CODE_LISTING(...) (void)0;
+#endif
+
 
 struct Marks {
     int * Label;
@@ -27,6 +33,7 @@ struct Assembler {
 
     Marks label = {};
 
+    FILE * listFile;
 };
 
 struct Command {
@@ -65,7 +72,10 @@ const char * CMD_FLAG_ASM = "--asmsource";
 const char * CMD_FLAG_BC  = "--bytecode";
 
 //! Default filename for writing a byte code 
-const char * PROG_BYTECODE_FILE = "bcode.bin";
+static const char * PROG_BYTECODE_FILE = "bcode.bin";
+
+//! Default filename for writing a code listing
+static const char * ASM_LIST_FILE = "listing.asm";
 
 char * BYTECODE_FILENAME = NULL;
 
@@ -77,7 +87,8 @@ const int POISON_VALUE = INT32_MAX;
 //! Functions for ASSEMBLER
 //! -------------------------------------------------------------------------
 
-err_t AsmCtor(const int argc, const char * argv[], Assembler * assembler);
+err_t AsmCtor(Assembler * assembler);
+err_t AsmDtor(Assembler * assembler);
 
 err_t ArgvParser(const int argc, const char * argv[], Assembler * fileInfo);
 
@@ -114,6 +125,10 @@ err_t GetCodeArguments(Assembler * assembler, size_t * count, size_t i,
 
 err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile);
 
+void BeginListing(Assembler * assembler);
+err_t AsmListing(Assembler * assembler, ArgValues newValues, uint8_t newCommandCode, size_t count);
+void EndListing(Assembler * assembler);
+
 int main(const int argc, const  char * argv[]) {
 
     printf("\nFile <%s>, [%s]\n", __FILE__, __TIME__);
@@ -122,7 +137,9 @@ int main(const int argc, const  char * argv[]) {
 
     Assembler assembler = {};
 
-    int ctorStat = AsmCtor(argc, argv, &assembler);
+    if (!ArgvParser(argc, argv, &assembler)) return ERR_ASM_CTOR;
+
+    int ctorStat = AsmCtor(&assembler);
     if (ctorStat != ERR_OK) {
         // err description
         printf("Error from constructor\n");
@@ -140,16 +157,15 @@ int main(const int argc, const  char * argv[]) {
 
     printf(BOLD_GREEN "Successful assembling.\n" RESET);
     printf(YELLOW "File with bytecode: <%s>\n" RESET, assembler.writeTo);
+
+    AsmDtor(&assembler);
     
-    return true;
+    return 0;
 }
 
-err_t AsmCtor(const int argc, const char * argv[], Assembler * assembler) {
+err_t AsmCtor(Assembler * assembler) {
 
-    ASSERT(argv);
     ASSERT(assembler);
-
-    if (!ArgvParser(argc, argv, assembler)) return ERR_ASM_CTOR;
 
     err_t prepareAsmStat = PrepareAsmSource(&(assembler->fAsmSource), assembler->readFrom, assembler->writeTo);
     if (prepareAsmStat != ERR_OK) {
@@ -162,6 +178,11 @@ err_t AsmCtor(const int argc, const char * argv[], Assembler * assembler) {
     assembler->label.Label = newLabel;
 
     for (size_t i = 0; i < LABEL_SIZE; i++) { assembler->label.Label[i] = -1; }
+
+    #ifdef Wa
+    BeginListing(assembler);
+    // assembler->listFile = fopen(ASM_LIST_FILE, "w");
+    #endif
 
     return ERR_OK;
 
@@ -207,16 +228,12 @@ err_t Assemble(Assembler * assembler) {
 
     printf(YELLOW "%d step of assembling...\n" RESET, i + 1);
 
+    //! Count in bytes
     size_t count = 0;
 
     for (size_t i = 0; i < (assembler->fAsmSource).nLines; i++) {
-
-        if ((assembler->fAsmSource).index->length > MAX_COMMAND_LEN) return ERR_OVERFLOW; //! overflow protect
-        
-        char command[MAX_COMMAND_LEN] = "";
         
         ArgValues newValues = {};
-
         uint8_t newCommandCode = 0;
 
         err_t getArgStat = GetCodeArguments(assembler, &count, i, &newValues, &newCommandCode);
@@ -224,12 +241,18 @@ err_t Assemble(Assembler * assembler) {
             printf("Error of getting args\n");
             return ERR_ASM;
         }
+        CODE_LISTING(assembler, newValues, newCommandCode, count);
 
         err_t writeArgsStat = WriteArguments(byteCodeFile, newCommandCode, &newValues);
         if (writeArgsStat != ERR_OK) {
             printf("Error of writing arguments to the byte code file\n");
             return ERR_ASM;
         }
+
+
+        if (newCommandCode == SKIP_STEP) continue;;
+
+        count += 1 + (newValues.usedArgs * sizeof(int32_t));
 
     }
 
@@ -242,7 +265,7 @@ err_t Assemble(Assembler * assembler) {
     #endif
 
     fclose(byteCodeFile);
-    
+
     }
 
     return ERR_OK;
@@ -280,9 +303,6 @@ err_t WriteArguments(FILE * fileSource, uint8_t newCommandCode, ArgValues * newV
 
     uint8_t argCount = (args == 2) ? 1 : 0;
 
-    // 1st byte: quantity of arguments
-    // if (fwrite(&argCount, sizeof(uint8_t), 1, fileSource) != 1) return ERR_ASM;
-
     //! 1st byte: code of the command
     if (fwrite(&newCommandCode, sizeof(uint8_t), 1, fileSource) != 1) return ERR_ASM;
 
@@ -311,23 +331,15 @@ err_t GetCodeArguments(Assembler * assembler, size_t * count, size_t i,
     // buffer overflow protect
     if (assembler->fAsmSource.index->length > MAX_COMMAND_LEN) return ERR_OVERFLOW;
 
-    // char arg1[MAX_COMMAND_LEN] = "";
-    // char arg2[MAX_COMMAND_LEN] = "";
-
     newValues->nArgs = sscanf(assembler->fAsmSource.index[i].index, "%10s %10s", newValues->arg1, newValues->arg2);
-
-    // strcpy(arg1, newValues->arg1);
-    // strcpy(arg2, newValues->arg2);
-
-    if (newValues->nArgs <= 0) return ERR_OK;
-
-    if (newValues->nArgs != 1 && newValues->nArgs != 2) return ERR_COMMAND;
-
-    //! Comments
-    if (newValues->arg1[0] == ';') {
+    
+    //! Comments and empty strings
+    if (newValues->arg1[0] == ';' || newValues->nArgs <= 0) {
         *newCommandCode = SKIP_STEP;
         return ERR_OK;
     }
+
+    if (newValues->nArgs != 1 && newValues->nArgs != 2) return ERR_COMMAND;
 
     // Write a mark to the label
     if (newValues->arg1[0] == ':') {
@@ -356,9 +368,10 @@ err_t GetCodeArguments(Assembler * assembler, size_t * count, size_t i,
     
     }
 
+    
     //! Count in bytes
-    *count += 1 + (newValues->usedArgs * sizeof(int32_t));
-
+    // *count += 1 + (newValues->usedArgs * sizeof(int32_t));
+    
     return ERR_OK;
 
 }
@@ -858,6 +871,102 @@ err_t WriteJumpMark(Marks * label, const char * arg, int * newValue, uint8_t * c
 
     return ERR_OK;
 
+}
+
+void BeginListing(Assembler * assembler) {
+
+    ASSERT(assembler);
+
+    assembler->listFile = fopen(ASM_LIST_FILE, "w");
+    if (assembler->listFile == NULL) {
+        return;
+    }
+
+    fprintf(assembler->listFile,
+        "------------------------------------------------------------------------\n");
+    fprintf(assembler->listFile, 
+        "--------------------  <<< ASSEMBLER LISTING >>> ------------------------\n");
+    fprintf(assembler->listFile,
+        "------------------------------------------------------------------------\n");
+    
+    fprintf(assembler->listFile,
+        "| ADDRESS           | HEX CODE                | SOURCE LINE            |\n");
+
+    fprintf(assembler->listFile,
+        "------------------------------------------------------------------------\n");
+    
+}
+
+err_t AsmListing(Assembler * assembler, ArgValues newValues, uint8_t newCommandCode, size_t count) {
+
+    ASSERT(assembler);
+
+    size_t addressStrLen = 20;
+    size_t hexStrLen     = 26;
+    size_t srcLineLen    = 26;
+
+    char addressLine[addressStrLen] = "";
+    snprintf(addressLine, addressStrLen, "%#06zx", count);
+    fprintf(assembler->listFile, "| %-18s", addressLine);
+
+    char hexCodeLine[hexStrLen] = "";
+    char sourceLine[srcLineLen] = "";
+
+    switch (newValues.usedArgs)
+    {
+        case (0): 
+            snprintf(hexCodeLine, hexStrLen, "%#x", newCommandCode);
+            snprintf(sourceLine, srcLineLen, "%s", newValues.arg1);
+            break;
+        case (1):
+            snprintf(hexCodeLine, hexStrLen, "%#x %d", newCommandCode, newValues.value1);
+            snprintf(sourceLine, srcLineLen, "%s %s", newValues.arg1, newValues.arg2);
+            break;
+        case (2):
+            snprintf(hexCodeLine, hexStrLen, "%#x %d %d", newCommandCode, newValues.value1, newValues.value2);
+            snprintf(sourceLine, srcLineLen, "%s %s", newValues.arg1, newValues.arg2);
+            break;
+        default: return ERR_ASM;
+    }
+    fprintf(assembler->listFile, "| %-24s", hexCodeLine);
+    fprintf(assembler->listFile, "| %-23s|", sourceLine);
+    fprintf(assembler->listFile, "\n");
+
+    return ERR_OK;
+}
+
+void EndListing(Assembler * assembler) {
+
+    ASSERT(assembler);
+    
+    if (assembler->listFile == NULL) return;
+
+    fprintf(assembler->listFile,
+        "------------------------------------------------------------------------\n");
+    fprintf(assembler->listFile,
+        "----------      <<<< THE END OF THE CODE LISTING >>>>        -----------\n");
+    fprintf(assembler->listFile,
+        "------------------------------------------------------------------------\n");
+
+    fclose(assembler->listFile);
+
+}
+
+err_t AsmDtor(Assembler * assembler) {
+
+    ASSERT(assembler);
+
+    free(assembler->label.Label);
+    free(assembler->readFrom);
+    free(assembler->writeTo);
+    free(assembler->fAsmSource.text_ptr);
+    free(assembler->fAsmSource.index->index);
+
+    #ifdef Wa
+    EndListing(assembler);
+    #endif
+
+    return ERR_OK;
 }
 
 size_t DjbHash(const void *data, size_t size) {
