@@ -39,12 +39,21 @@ struct Argument {
     size_t argSize;
 };
 
+//! Max command length for commands
+const int MAX_COMMAND_LEN = 256;
+
 /**
  * Values near the command like PUSH 20, POP [1], PUSH [BX+30].
- * There is 2 (BX = 2) and 30 is first value and second value
- * Maximum two values near the command
+ * There is 2 (BX = 2) and 30 is the first value and the second value
+ * Maximum two arguments near the command
  */
 struct ArgValues {
+
+    char arg1[MAX_COMMAND_LEN];
+    char arg2[MAX_COMMAND_LEN];
+
+    int8_t nArgs;
+
     int32_t value1;
     int32_t value2;
     uint8_t usedArgs; //!< 0, 1 or 2 used arguments in current command
@@ -59,9 +68,6 @@ const char * CMD_FLAG_BC  = "--bytecode";
 const char * PROG_BYTECODE_FILE = "bcode.bin";
 
 char * BYTECODE_FILENAME = NULL;
-
-//! Max command length for commands
-const int MAX_COMMAND_LEN = 256;
 
 const size_t LABEL_SIZE = 100;
 
@@ -101,9 +107,9 @@ err_t WriteMarkIndex(Marks * label, const char * arg2, int * newValue);
 //! Write commands to the file with byte code
 size_t DjbHash(const void * data, size_t size);
 
-err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, ArgValues * newValues);
+err_t WriteArguments(FILE * fileSource, uint8_t newCommandCode, ArgValues * newValues);
 err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const char * byteCodeName);
-err_t GetCodeArguments(Assembler * assembler, size_t * count, int i, int * nArgs,
+err_t GetCodeArguments(Assembler * assembler, size_t * count, size_t i,
                                               ArgValues * newValues, uint8_t * newCommandCode);
 
 err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile);
@@ -211,17 +217,15 @@ err_t Assemble(Assembler * assembler) {
         
         ArgValues newValues = {};
 
-        int nArgs = 0;
-
         uint8_t newCommandCode = 0;
 
-        err_t getArgStat = GetCodeArguments(assembler, &count, i, &nArgs, &newValues, &newCommandCode);
+        err_t getArgStat = GetCodeArguments(assembler, &count, i, &newValues, &newCommandCode);
         if (getArgStat != ERR_OK) {
             printf("Error of getting args\n");
             return ERR_ASM;
         }
 
-        err_t writeArgsStat = WriteArguments(byteCodeFile, nArgs, newCommandCode, &newValues);
+        err_t writeArgsStat = WriteArguments(byteCodeFile, newCommandCode, &newValues);
         if (writeArgsStat != ERR_OK) {
             printf("Error of writing arguments to the byte code file\n");
             return ERR_ASM;
@@ -238,8 +242,8 @@ err_t Assemble(Assembler * assembler) {
     #endif
 
     fclose(byteCodeFile);
+    
     }
-
 
     return ERR_OK;
 }
@@ -261,10 +265,12 @@ err_t PrepareAsmSource(FileStat * fAsmSource, const char * asmSourceName, const 
     return ERR_OK;
 }
 
-err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, ArgValues * newValues) {
+err_t WriteArguments(FILE * fileSource, uint8_t newCommandCode, ArgValues * newValues) {
 
     ASSERT(newValues);
     ASSERT(fileSource);
+
+    int8_t args = newValues->nArgs;
 
     if (newCommandCode == SKIP_STEP || args <= 0) return ERR_OK;
 
@@ -297,7 +303,7 @@ err_t WriteArguments(FILE * fileSource, int args, uint8_t newCommandCode, ArgVal
 
 }
 
-err_t GetCodeArguments(Assembler * assembler, size_t * count, int i, int * nArgs,
+err_t GetCodeArguments(Assembler * assembler, size_t * count, size_t i,
                                               ArgValues * newValues, uint8_t * newCommandCode) {
     ASSERT(assembler);
     ASSERT(count);
@@ -305,25 +311,28 @@ err_t GetCodeArguments(Assembler * assembler, size_t * count, int i, int * nArgs
     // buffer overflow protect
     if (assembler->fAsmSource.index->length > MAX_COMMAND_LEN) return ERR_OVERFLOW;
 
-    char arg1[MAX_COMMAND_LEN] = "";
-    char arg2[MAX_COMMAND_LEN] = "";
+    // char arg1[MAX_COMMAND_LEN] = "";
+    // char arg2[MAX_COMMAND_LEN] = "";
 
-    *nArgs = sscanf(assembler->fAsmSource.index[i].index, "%s %s", arg1, arg2);
+    newValues->nArgs = sscanf(assembler->fAsmSource.index[i].index, "%10s %10s", newValues->arg1, newValues->arg2);
 
-    if (*nArgs <= 0) return ERR_OK;
+    // strcpy(arg1, newValues->arg1);
+    // strcpy(arg2, newValues->arg2);
 
-    if (*nArgs != 1 && *nArgs != 2) return ERR_COMMAND;
+    if (newValues->nArgs <= 0) return ERR_OK;
+
+    if (newValues->nArgs != 1 && newValues->nArgs != 2) return ERR_COMMAND;
 
     //! Comments
-    if (arg1[0] == ';') {
+    if (newValues->arg1[0] == ';') {
         *newCommandCode = SKIP_STEP;
         return ERR_OK;
     }
 
     // Write a mark to the label
-    if (arg1[0] == ':') {
+    if (newValues->arg1[0] == ':') {
 
-        err_t makeMarkStat = MakeMark(&(assembler->label), arg1, *count);
+        err_t makeMarkStat = MakeMark(&(assembler->label), newValues->arg1, *count);
         if (makeMarkStat != ERR_OK) {
             printf("Make mark error\n");
             return ERR_ASM;
@@ -334,10 +343,8 @@ err_t GetCodeArguments(Assembler * assembler, size_t * count, int i, int * nArgs
         return ERR_OK;
     }
 
-    // *count += 2 + ((*nArgs == 2) ? sizeof(int32_t) : 0); // !!!
-
-    Command command   = {.commandPtr = arg1, .commandSize = strlen(arg1)};
-    Argument argument = {.argPtr = arg2, .argSize = strlen(arg2)};
+    Command command   = {.commandPtr = newValues->arg1, .commandSize = strlen(newValues->arg1)};
+    Argument argument = {.argPtr = newValues->arg2, .argSize = strlen(newValues->arg2)};
 
     err_t interpreterStat = GetCommandCode(&(assembler->label), &command, newCommandCode, &argument, newValues);
 
@@ -345,7 +352,7 @@ err_t GetCodeArguments(Assembler * assembler, size_t * count, int i, int * nArgs
     
         printf(BOLD_RED "Translation error: file <%s>, line %d\n"
                         "Incorrect command\n" RESET, assembler->fAsmSource.readFrom, i + 1);
-        return ERR_INTPR;
+        return ERR_ASM;
     
     }
 
@@ -485,7 +492,6 @@ err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode,
     }
 
     case (HASH_CALL): {
-
         if (strcmp(command->commandPtr, "CALL") != 0) return ERR_INTPR;
 
         err_t markStat = WriteMarkIndex(label, argument->argPtr, &(newValues->value1));
