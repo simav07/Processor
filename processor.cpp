@@ -46,14 +46,14 @@ void VmDump(FILE * stream, vmResource * virtualMachine);
 
 void DrawRam(vmResource * virtualMachine);
 
-err_t VmCtor(const int argc, const char * argv[], vmResource * virtualMachine);
+err_t VmCtor(vmResource * virtualMachine, char * byteCodeFile);
 void VmDtor(vmResource * virtualMachine);
 
-err_t ArgvParser(const int argc, const char * argv[], char * readFromFile);
+err_t ArgvParser(const int argc, const char * argv[], char ** readFromFile);
 
 //! Main virtual machine
 err_t RunVirtualMachine(vmResource * virtualMachine);
-err_t PrepareByteCode(vmResource * virtualMachine, const int argc, const char * argv[]);
+err_t PrepareByteCode(vmResource * virtualMachine, char * byteCodeFile);
 
 //! Fill byte code buffer from txt
 size_t GetByteCode(uint8_t ** byteCode, const char * byteCodeFilename);
@@ -100,8 +100,15 @@ int main(const int argc, const char * argv[]) {
 
     vmResource virtualMachine = {};
     
-    // MENTOR: argc argv ???
-    err_t ctorStat = VmCtor(argc, argv, &virtualMachine);
+    char * byteCodeFile = NULL;
+
+    int filenamesStat = ArgvParser(argc, argv, &byteCodeFile);
+    if (filenamesStat != ERR_OK) {
+        printf("Error of reading bytecode filename\n");
+        return ERR_ASM;
+    }
+
+    err_t ctorStat = VmCtor(&virtualMachine, byteCodeFile);
     if (ctorStat != ERR_OK) {
         // error description
         printf("ERROR OF MAKING BYTE CODE\n");
@@ -123,14 +130,14 @@ int main(const int argc, const char * argv[]) {
     return 0;
 }
 
-err_t VmCtor(const int argc, const char * argv[], vmResource * virtualMachine) {
+err_t VmCtor(vmResource * virtualMachine, char * byteCodeFile) {
 
-    ASSERT(argv);
+    ASSERT(byteCodeFile);
     ASSERT(virtualMachine);
 
     virtualMachine->pc = 0;
  
-    err_t preparingStat = PrepareByteCode(virtualMachine, argc, argv);
+    err_t preparingStat = PrepareByteCode(virtualMachine, byteCodeFile);
 
     if (preparingStat != ERR_OK) {
         // error description
@@ -169,18 +176,18 @@ void VmDtor(vmResource * virtualMachine) {
 
 }
 
-err_t PrepareByteCode(vmResource * virtualMachine, const int argc, const char * argv[]) {
+err_t PrepareByteCode(vmResource * virtualMachine, char * byteCodeFile) {
 
     ASSERT(virtualMachine);
-    ASSERT(argv);
+    ASSERT(byteCodeFile);
+    /*
+    char * byteCodeFile = NULL;
 
-    char byteCodeFile[100] = "";
-
-    int filenamesStat = ArgvParser(argc, argv, byteCodeFile);
+    int filenamesStat = ArgvParser(argc, argv, &byteCodeFile);
     if (filenamesStat != ERR_OK) {
         printf("Error of reading bytecode filename\n");
         return ERR_ASM;
-    }
+    } */
 
     size_t byteCodeLen = GetByteCode(&(virtualMachine->byteCode), byteCodeFile);
 
@@ -754,7 +761,7 @@ void VmDump(FILE * stream, vmResource * virtualMachine) {
 }
 
 // IO functions ----------------------------------------------------
-err_t ArgvParser(const int argc, const char * argv[], char * readFromFile) {
+err_t ArgvParser(const int argc, const char * argv[], char ** readFromFile) {
 
     ASSERT(argv);
 
@@ -763,8 +770,13 @@ err_t ArgvParser(const int argc, const char * argv[], char * readFromFile) {
         ASSERT(argv[2]);
 
         //! User put bytecode filename, so processor must use this bytecode
-        size_t len = strlen(argv[2]);
-        memcpy(readFromFile, argv[2], len + 1);
+        // size_t len = strlen(argv[2]);
+        // memcpy(readFromFile, argv[2], len + 1);
+
+        char * newPtr = strdup(argv[2]);
+        if (newPtr == NULL) return ERR_CTOR;
+
+        *readFromFile = newPtr;
 
         printf(YELLOW "Executable file: <%s>\n" RESET, argv[2]);
 
