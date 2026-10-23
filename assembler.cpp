@@ -14,12 +14,6 @@ typedef int err_t;
 #include "include/commands.h"
 #include "hashcommands.h"
 
-#ifdef Wa
-#define CODE_LISTING(...) AsmListing(__VA_ARGS__)
-#else
-#define CODE_LISTING(...) (void)0
-#endif
-
 struct Marks {
     int * Label;
     size_t nMark  = 0;
@@ -180,11 +174,8 @@ err_t AsmCtor(Assembler * assembler) {
 
     for (size_t i = 0; i < LABEL_SIZE; i++) { assembler->label.Label[i] = -1; }
 
-    #ifdef Wa
-    BeginListing(assembler);
-    // assembler->listFile = fopen(ASM_LIST_FILE, "w");
-    #endif
-
+    if (assembler->isListing) BeginListing(assembler);
+    
     return ERR_OK;
 
 }
@@ -223,7 +214,6 @@ err_t ArgvParser(int argc, char * argv[], Assembler * assembler) {
         }
         case ('l'):
             assembler->isListing = true;
-            return true;
             break;
 
         default: return false;
@@ -257,7 +247,8 @@ err_t Assemble(Assembler * assembler) {
             printf("Error of getting args\n");
             return ERR_ASM;
         }
-        CODE_LISTING(assembler, newValues, newCommandCode, count);
+
+        if (assembler->isListing) AsmListing(assembler, newValues, newCommandCode, count);
 
         err_t writeArgsStat = WriteArguments(byteCodeFile, newCommandCode, &newValues);
         if (writeArgsStat != ERR_OK) {
@@ -978,9 +969,7 @@ err_t AsmDtor(Assembler * assembler) {
     free(assembler->fAsmSource.text_ptr);
     free(assembler->fAsmSource.index->index);
 
-    #ifdef Wa
-    EndListing(assembler);
-    #endif
+    if (assembler->isListing) EndListing(assembler);
 
     return ERR_OK;
 }
