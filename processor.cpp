@@ -87,6 +87,7 @@ err_t AddCom(vmResource * virtualMachine);
 err_t SubCom(vmResource * virtualMachine);
 err_t DivCom(vmResource * virtualMachine);
 err_t MulCom(vmResource * virtualMachine);
+err_t Sqrt(vmResource * virtualMachine);
 
 err_t Call(vmResource * virtualMachine);
 err_t Ret(vmResource * virtualMachine);
@@ -294,6 +295,7 @@ err_t RunCommand(vmResource * virtualMachine, uint8_t command, stackElem_t resul
         case SUB_C:  return SubCom(virtualMachine);
         case DIV_C:  return DivCom(virtualMachine);
         case MUL_C:  return MulCom(virtualMachine);
+        case SQRT_C: return Sqrt(virtualMachine);
         case OUT_C:  return OutCom(virtualMachine);
         case HLT_C:  return ERR_OK;
 
@@ -608,6 +610,22 @@ err_t MulCom(vmResource * virtualMachine) {
     if (pushStat != ERR_OK) return ERR_COMMAND;
     
     return ERR_OK;
+}
+
+err_t Sqrt(vmResource * virtualMachine) {
+
+    ASSERT(virtualMachine);
+
+    err_t popStat = ERR_OK;
+
+    stackElem_t number = StackPop(&virtualMachine->stack, &popStat);
+    if (popStat != ERR_OK) return ERR_COMMAND;
+
+    err_t pushStat = StackPush(&(virtualMachine->stack), (stackElem_t)(pow(number, 0.5)));
+    if (pushStat != ERR_OK) return ERR_COMMAND;
+
+    return ERR_OK;
+
 }
 
 err_t OutCom(vmResource * virtualMachine) {
