@@ -25,7 +25,7 @@ struct vmResource {
     //! Registers
     stackElem_t regstr[nRegisters] = {};
 
-    ramElem_t * RAM;
+    ramElem_t * RAM = NULL;
 };
 
 const size_t ramSize = 7000;
@@ -34,29 +34,31 @@ const size_t picLength = 100;
 const size_t picWidth  = 50;
 
 //! Flag for byte code filename
-static const char * CMD_FLAG_BYTECODE = "--bytecode";
+const char * const CMD_FLAG_BYTECODE = "--bytecode";
+
+const size_t RAM_CELL_BAD_APPLE = 6999;
 
 //! #define VMDump for debug
 
-static const char * FILE_STACKDUMP = "dump.txt";
+const char FILE_STACKDUMP[] = "dump.txt";
 
 void VmDump(FILE * stream, vmResource * virtualMachine);
 
-void DrawRam(vmResource * virtualMachine);
+void DrawRam(const vmResource * virtualMachine);
 
 err_t VmCtor(vmResource * virtualMachine, char * byteCodeFile);
+err_t PrepareByteCode(vmResource * virtualMachine, char * byteCodeFile);
 void VmDtor(vmResource * virtualMachine);
 
-err_t ArgvParser(const int argc, const char * argv[], char ** readFromFile);
+err_t ArgvParser(const int argc, const char * const argv[], char ** readFromFile);
 
 //! Main virtual machine
 err_t RunVirtualMachine(vmResource * virtualMachine);
-err_t PrepareByteCode(vmResource * virtualMachine, char * byteCodeFile);
 
 //! Fill byte code buffer from txt
 size_t GetByteCode(uint8_t ** byteCode, const char * byteCodeFilename);
 
-size_t GetInstructionSize(vmResource * virtualMachine);
+size_t  GetInstructionSize(vmResource * virtualMachine);
 int32_t GetInstructionArgument(vmResource * virtualMachine);
 
 
@@ -93,9 +95,7 @@ err_t Ret(vmResource * virtualMachine);
 err_t OutCom(vmResource * virtualMachine);
 // -------------------------------------------------------------------
 
-int main(const int argc, const char * argv[]) {
-
-    printf("\nFile <%s>, [%s]\n", __FILE__, __TIME__);
+int main(int argc, const char * const * argv) {
 
     vmResource virtualMachine = {};
     
@@ -121,7 +121,7 @@ int main(const int argc, const char * argv[]) {
         printf("ERROR OF VIRTUAL MACHINE\n");
         return false;
     }
-    // PlayVideo(&virtualMachine, "bad_apple.bin", 30);
+
     // DrawRam(&virtualMachine);
 
     VmDtor(&virtualMachine);
@@ -154,11 +154,16 @@ err_t VmCtor(vmResource * virtualMachine, char * byteCodeFile) {
     }
 
     int ctorStat1 = StackCtor(&(virtualMachine->stack), 10);
-    if (ctorStat1 != ERR_OK) return ERR_VM_CTOR;
-
+    if (ctorStat1 != ERR_OK) {
+        free(virtualMachine->RAM);
+        return ERR_VM_CTOR;
+    }
     int ctorStat2 = StackCtor(&(virtualMachine->funcStack), 10);
-    if (ctorStat2 != ERR_OK) return ERR_VM_CTOR;
-
+    if (ctorStat2 != ERR_OK) {
+        free(virtualMachine->RAM);
+        StackDtor(&virtualMachine->stack);
+        return ERR_VM_CTOR;
+    }
     virtualMachine->fileDump = fopen(FILE_STACKDUMP, "w");
     if (!virtualMachine->fileDump) return ERR_FILEOPEN;
 
@@ -203,13 +208,13 @@ err_t RunVirtualMachine(vmResource * virtualMachine) {
         uint8_t command = virtualMachine->byteCode[virtualMachine->pc] & 0x1F;
         stackElem_t result = 0;
 
-        if ((virtualMachine->byteCode[virtualMachine->pc] & 0x1F) == HLT_C) return ERR_OK;
+        if (command == HLT_C) return ERR_OK;
 
         virtualMachine->pcChanged = false;
         size_t instrSize = 0;
 
-        err_t interpreterStat = ReadCommand(virtualMachine, &instrSize, &command, &result);
-        if (interpreterStat != ERR_OK)  return interpreterStat;
+        err_t readingStat = ReadCommand(virtualMachine, &instrSize, &command, &result);
+        if (readingStat != ERR_OK)  return readingStat;
 
         err_t runStat = RunCommand(virtualMachine, command, result);
         if (runStat != ERR_OK) return ERR_PROCESSING;
@@ -226,6 +231,8 @@ err_t RunVirtualMachine(vmResource * virtualMachine) {
     return ERR_PROCESSING;
 }
 
+// TODO: int * RetResult(vmResource virtualMachine, uint8_t * command);
+
 err_t ReadCommand(vmResource * virtualMachine, size_t * instrSize, uint8_t * command, stackElem_t * result) {
 
     ASSERT(virtualMachine);
@@ -234,12 +241,12 @@ err_t ReadCommand(vmResource * virtualMachine, size_t * instrSize, uint8_t * com
 
     *instrSize = GetInstructionSize(virtualMachine);
 
-    uint8_t flags = virtualMachine->byteCode[virtualMachine->pc];
+    uint8_t cmdFlags = virtualMachine->byteCode[virtualMachine->pc];
     
     size_t argIndex = virtualMachine->pc + 1;
     int32_t value = 0;
 
-    if (flags & regMask) {
+    if (cmdFlags & regMask) {
         
         int32_t regIndex = 0;
 
@@ -253,7 +260,7 @@ err_t ReadCommand(vmResource * virtualMachine, size_t * instrSize, uint8_t * com
         argIndex += sizeof(int32_t);
     }
 
-    if (flags & constMask) {
+    if (cmdFlags & constMask) {
         if (argIndex + sizeof(int32_t) > virtualMachine->byteCodeLen) return ERR_PROCESSING;
 
         memcpy(&value, virtualMachine->byteCode + argIndex, sizeof(value));
@@ -321,12 +328,11 @@ err_t Pop(vmResource * virtualMachine, uint8_t flags, stackElem_t result) {
         if (popStat != ERR_OK) return ERR_COMMAND;
         
         virtualMachine->RAM[(size_t)result] = var;
-        // DrawRam(virtualMachine)
 
-        if ((size_t)result == 6999) {
+        if ((size_t)result == RAM_CELL_BAD_APPLE) {
             
             DrawRam(virtualMachine); 
-            Sleep(33); // experimental value
+            Sleep(33);  // 1000 / 30 fps
 
         }
 
@@ -378,133 +384,97 @@ err_t Jump(vmResource * virtualMachine, size_t jumpIndex) {
 
 }
 
-err_t JA(vmResource * virtualMachine) {
-
-    ASSERT(virtualMachine);
-
-    err_t popStat1 = ERR_OK;
-    err_t popStat2 = ERR_OK;
-
-    stackElem_t b = StackPop(&(virtualMachine->stack), &popStat1);
-    if (popStat1 != ERR_OK) return ERR_COMMAND;
-
-    stackElem_t a = StackPop(&(virtualMachine->stack), &popStat2);
-
-    if (popStat2 != ERR_OK) return ERR_COMMAND;
-    
-    if (a > b) return Jump(virtualMachine, (size_t)GetInstructionArgument(virtualMachine));
-
-    return ERR_OK;
-}
-
-err_t JAE(vmResource * virtualMachine) {
-
-    ASSERT(virtualMachine);
-
-    err_t popStat1 = ERR_OK;
-    err_t popStat2 = ERR_OK;
-
-    stackElem_t b = StackPop(&(virtualMachine->stack), &popStat1);
-    if (popStat1 != ERR_OK) return ERR_COMMAND;
-
-    stackElem_t a = StackPop(&(virtualMachine->stack), &popStat2);
-    
-    if (popStat2 != ERR_OK) return ERR_COMMAND;
-
-    if (a >= b) return Jump(virtualMachine, (size_t)GetInstructionArgument(virtualMachine));
-
-    return ERR_OK;
-}
-
-err_t JB(vmResource * virtualMachine) {
-
-    ASSERT(virtualMachine);
-
-    err_t popStat1 = ERR_OK;
-    err_t popStat2 = ERR_OK;
-
-    stackElem_t b = StackPop(&(virtualMachine->stack), &popStat1);
-    if (popStat1 != ERR_OK) return ERR_COMMAND;
-
-    stackElem_t a = StackPop(&(virtualMachine->stack), &popStat2);
-    
-    if (popStat2 != ERR_OK) return ERR_COMMAND;
-    
-    if (a < b) return Jump(virtualMachine, (size_t)GetInstructionArgument(virtualMachine));
-
-    return ERR_OK;
-}
-
-err_t JBE(vmResource * virtualMachine) {
-
-    ASSERT(virtualMachine);
-
-    err_t popStat1 = ERR_OK;
-    err_t popStat2 = ERR_OK;
-
-    stackElem_t b = StackPop(&(virtualMachine->stack), &popStat1);
-    if (popStat1 != ERR_OK) return ERR_COMMAND;
-
-    stackElem_t a = StackPop(&(virtualMachine->stack), &popStat2);
-    if (popStat2 != ERR_OK) return ERR_COMMAND;
-    
-    if (a <= b) return Jump(virtualMachine, (size_t)GetInstructionArgument(virtualMachine));
-
-    return ERR_OK;
-}
-
-err_t JE(vmResource * virtualMachine) {
-
-    ASSERT(virtualMachine);
-
-    err_t popStat1 = ERR_OK;
-    err_t popStat2 = ERR_OK;
-
-    stackElem_t b = StackPop(&(virtualMachine->stack), &popStat1);
-    if (popStat1 != ERR_OK) return ERR_COMMAND;
-
-    stackElem_t a = StackPop(&(virtualMachine->stack), &popStat2);
-    if (popStat2 != ERR_OK) return ERR_COMMAND;
-    
-    if (a == b) return Jump(virtualMachine, (size_t)GetInstructionArgument(virtualMachine));
-
-    return ERR_OK;
-}
-
-err_t JNE(vmResource * virtualMachine) {
-
-    ASSERT(virtualMachine);
-
-    err_t popStat1 = ERR_OK;
-    err_t popStat2 = ERR_OK;
-
-    stackElem_t b = StackPop(&(virtualMachine->stack), &popStat1);
-    if (popStat1 != ERR_OK) return ERR_COMMAND;
-
-    stackElem_t a = StackPop(&(virtualMachine->stack), &popStat2);
-    if (popStat2 != ERR_OK) return ERR_COMMAND;
-    
-    if (a != b) return Jump(virtualMachine, (size_t)GetInstructionArgument(virtualMachine));
-
-    return ERR_OK;
-}
-
-err_t In(vmResource * virtualMachine) {
-
-    ASSERT(virtualMachine);
-
-    stackElem_t newElem = 0;
-
-    if (scanf("%lg", &newElem) == 1) {
-
-        err_t pushStat = StackPush(&(virtualMachine->stack), newElem);
-        if (pushStat != ERR_OK) return ERR_PROCESSING;
-        return ERR_OK;
-
+#define JUMP_FUNCTION(JMP_NAME, OPER) \
+    err_t JMP_NAME (vmResource * virtualMachine) {\
+        \
+        ASSERT(virtualMachine);                                          \
+                                                                         \
+        err_t popStat1 = ERR_OK;                                         \
+        err_t popStat2 = ERR_OK;                                         \
+                                                                         \
+        stackElem_t b = StackPop(&(virtualMachine->stack), &popStat1);   \
+        if (popStat1 != ERR_OK) return ERR_COMMAND;                      \
+                                                                         \
+        stackElem_t a = StackPop(&(virtualMachine->stack), &popStat2);   \
+        if (popStat2 != ERR_OK) return ERR_COMMAND;                      \
+                                                                         \
+        if (a OPER b) return Jump(virtualMachine,                        \
+                        (size_t)GetInstructionArgument(virtualMachine)); \
+                                                                         \
+        return ERR_OK;                                                   \
     }
 
-    printf("Incorrect input\n");
-    return ERR_PROCESSING;
+JUMP_FUNCTION(JA, >)
+
+JUMP_FUNCTION(JAE, >=)
+
+JUMP_FUNCTION(JB, <)
+
+JUMP_FUNCTION(JBE, <=)
+
+JUMP_FUNCTION(JE, ==)
+
+JUMP_FUNCTION(JNE, !=)
+
+#define OPER_FUNCTION(OPER_NAME, OPER) \
+    err_t OPER_NAME (vmResource * virtualMachine) {                                 \
+                                                                                    \
+        ASSERT(virtualMachine);                                                     \
+                                                                                    \
+        stackElem_t a = 0;                                                          \
+        stackElem_t b = 0;                                                          \
+                                                                                    \
+        if (GetTwoPop(&(virtualMachine->stack), &a, &b) != ERR_OK) {                \
+            return ERR_COMMAND;                                                     \
+        }                                                                           \
+                                                                                    \
+        int pushStat = StackPush(&(virtualMachine->stack), (stackElem_t)(b OPER a));\
+                                                                                    \
+        if (pushStat != ERR_OK) return ERR_COMMAND;                                 \
+                                                                                    \
+        return ERR_OK;                                                              \
+                                                                                    \
+    }
+
+OPER_FUNCTION(AddCom, +)
+
+OPER_FUNCTION(SubCom, -)
+
+OPER_FUNCTION(DivCom, /)
+
+OPER_FUNCTION(MulCom, *)
+
+// Get 2 last elems from stack
+err_t GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b) {
+
+    ASSERT(stack);
+    ASSERT(a);
+    ASSERT(b);
+
+    err_t popStat = ERR_OK;
+
+    *a = StackPop(stack, &popStat);
+    if (popStat != ERR_OK) return ERR_COMMAND;
+
+    *b = StackPop(stack, &popStat);
+    if (popStat != ERR_OK) return ERR_COMMAND;
+
+    return ERR_OK;
+}
+
+err_t Sqrt(vmResource * virtualMachine) {
+
+    ASSERT(virtualMachine);
+
+    err_t popStat = ERR_OK;
+
+    stackElem_t number = StackPop(&virtualMachine->stack, &popStat);
+    if (popStat != ERR_OK) return ERR_COMMAND;
+
+    err_t pushStat = StackPush(&(virtualMachine->stack), (stackElem_t)(pow(number, 0.5)));
+    if (pushStat != ERR_OK) return ERR_COMMAND;
+
+    return ERR_OK;
 }
 
 err_t Call(vmResource * virtualMachine) {
@@ -529,101 +499,22 @@ err_t Ret(vmResource * virtualMachine) {
     return Jump(virtualMachine, backIndex);
 }
 
-// Get 2 last elems from stack
-err_t GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b) {
-
-    ASSERT(stack);
-    ASSERT(a);
-    ASSERT(b);
-
-    err_t popStat = ERR_OK;
-
-    *a = StackPop(stack, &popStat);
-    if (popStat != ERR_OK) return ERR_COMMAND;
-
-    *b = StackPop(stack, &popStat);
-    if (popStat != ERR_OK) return ERR_COMMAND;
-
-    return ERR_OK;
-}
-
-err_t AddCom(vmResource * virtualMachine) {
+err_t In(vmResource * virtualMachine) {
 
     ASSERT(virtualMachine);
 
-    stackElem_t a = 0;
-    stackElem_t b = 0;
+    stackElem_t newElem = 0;
 
-    if (GetTwoPop(&(virtualMachine->stack), &a, &b) != ERR_OK) {
-        printf("Can't get a and b\n");
-        return ERR_COMMAND;
+    if (scanf("%lg", &newElem) == 1) {
+
+        err_t pushStat = StackPush(&(virtualMachine->stack), newElem);
+        if (pushStat != ERR_OK) return ERR_PROCESSING;
+        return ERR_OK;
+
     }
 
-    int pushStat = StackPush(&(virtualMachine->stack), (stackElem_t)(a + b));
-    
-    if (pushStat != ERR_OK) return ERR_COMMAND;
-    
-    return ERR_OK;
-}
-
-err_t SubCom(vmResource * virtualMachine) {
-
-    ASSERT(virtualMachine);
-
-    stackElem_t a = 0, b = 0;
-
-    if (GetTwoPop(&(virtualMachine->stack), &a, &b) != ERR_OK) return ERR_COMMAND;
-
-    int pushStat = StackPush(&(virtualMachine->stack), (stackElem_t)(b - a));
-    
-    if (pushStat != ERR_OK) return ERR_COMMAND;
-    
-    return ERR_OK;
-}
-
-err_t DivCom(vmResource * virtualMachine) {
-
-    ASSERT(virtualMachine);
-
-    stackElem_t a = 0, b = 0;
-
-    if (GetTwoPop(&(virtualMachine->stack), &a, &b) != ERR_OK) return ERR_COMMAND;
-    if (a == 0) return ERR_COMMAND;
-
-    int pushStat = StackPush(&(virtualMachine->stack), (stackElem_t)((double)b / (double)a));
-    if (pushStat != ERR_OK) return ERR_COMMAND;
-    
-    return ERR_OK;
-}
-
-err_t MulCom(vmResource * virtualMachine) {
-
-    ASSERT(virtualMachine);
-
-    stackElem_t a = 0, b = 0;
-
-    if (GetTwoPop(&(virtualMachine->stack), &a, &b) != ERR_OK) return ERR_COMMAND;
-
-    int pushStat = StackPush(&(virtualMachine->stack), (stackElem_t)(b * a));
-    if (pushStat != ERR_OK) return ERR_COMMAND;
-    
-    return ERR_OK;
-}
-
-err_t Sqrt(vmResource * virtualMachine) {
-
-    ASSERT(virtualMachine);
-
-    err_t popStat = ERR_OK;
-
-    stackElem_t number = StackPop(&virtualMachine->stack, &popStat);
-    if (popStat != ERR_OK) return ERR_COMMAND;
-
-    err_t pushStat = StackPush(&(virtualMachine->stack), (stackElem_t)(pow(number, 0.5)));
-    if (pushStat != ERR_OK) return ERR_COMMAND;
-
-    return ERR_OK;
-
+    printf("Incorrect input\n");
+    return ERR_PROCESSING;
 }
 
 err_t OutCom(vmResource * virtualMachine) {
@@ -771,7 +662,7 @@ void VmDump(FILE * stream, vmResource * virtualMachine) {
 }
 
 // IO functions ----------------------------------------------------
-err_t ArgvParser(const int argc, const char * argv[], char ** readFromFile) {
+err_t ArgvParser(const int argc, const char * const argv[], char ** readFromFile) {
 
     ASSERT(argv);
 
@@ -779,16 +670,10 @@ err_t ArgvParser(const int argc, const char * argv[], char ** readFromFile) {
 
         ASSERT(argv[2]);
 
-        //! User put bytecode filename, so processor must use this bytecode
-        // size_t len = strlen(argv[2]);
-        // memcpy(readFromFile, argv[2], len + 1);
-
         char * newPtr = strdup(argv[2]);
         if (newPtr == NULL) return ERR_CTOR;
 
         *readFromFile = newPtr;
-
-        printf(YELLOW "Executable file: <%s>\n" RESET, argv[2]);
 
         return ERR_OK;
     }
@@ -797,11 +682,10 @@ err_t ArgvParser(const int argc, const char * argv[], char ** readFromFile) {
     return ERR_FILEOPEN;
 }
 
-void DrawRam(vmResource * virtualMachine) {
+void DrawRam(const vmResource * virtualMachine) {
 
     ASSERT(virtualMachine);
     
-    // system("cls");
     char screenBuffer[picLength * picWidth + picWidth + 1] = "";
     size_t bufIndex = 0;
 

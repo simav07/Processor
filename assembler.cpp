@@ -138,8 +138,6 @@ char * toBinary(uint8_t num, char * buffer, size_t bufSize);
 
 int main(int argc, char * argv[]) {
 
-    printf("\nFile <%s>, [%s]\n", __FILE__, __TIME__);
-
     FileStat fAsmSource = {};
 
     Assembler assembler = {};
@@ -150,7 +148,7 @@ int main(int argc, char * argv[]) {
     if (ctorStat != ERR_OK) {
         // err description
         printf("Error from constructor\n");
-        return false;
+        return ERR_CTOR;
     }
 
     //! Asm source -> byte code
@@ -166,8 +164,8 @@ int main(int argc, char * argv[]) {
     printf(YELLOW "File with bytecode: <%s>\n" RESET, assembler.writeTo);
 
     AsmDtor(&assembler);
-    
-    return 0;
+
+    return ERR_OK;
 }
 
 err_t AsmCtor(Assembler * assembler) {
@@ -243,8 +241,6 @@ err_t Assemble(Assembler * assembler) {
     for (int j = 0; j < 2; j++) {
 
     FILE * byteCodeFile  = fopen(assembler->writeTo, "wb");
-
-    printf(YELLOW "%d step of assembling...\n" RESET, j + 1);
 
     //! Count in bytes
     size_t count = 0;
@@ -970,7 +966,6 @@ char * toBinary(uint8_t num, char * buffer, size_t bufSize) {
 void EndListing(Assembler * assembler) {
 
     ASSERT(assembler);
-    printf("END of listing\n");
     
     if (assembler->listFile == NULL) return;
 
