@@ -240,11 +240,11 @@ err_t Assemble(Assembler * assembler) {
 
     ASSERT(assembler);
     
-    for (int i = 0; i < 2; i++) {
+    for (int j = 0; j < 2; j++) {
 
     FILE * byteCodeFile  = fopen(assembler->writeTo, "wb");
 
-    printf(YELLOW "%d step of assembling...\n" RESET, i + 1);
+    printf(YELLOW "%d step of assembling...\n" RESET, j + 1);
 
     //! Count in bytes
     size_t count = 0;
@@ -260,8 +260,8 @@ err_t Assemble(Assembler * assembler) {
             return ERR_ASM;
         }
 
-        if (assembler->isListing) AsmListing(assembler, newValues, newCommandCode, count);
-
+        if (assembler->isListing && j == 1) AsmListing(assembler, newValues, newCommandCode, count);
+        
         err_t writeArgsStat = WriteArguments(byteCodeFile, newCommandCode, &newValues);
         if (writeArgsStat != ERR_OK) {
             printf("Error of writing arguments to the byte code file\n");
@@ -886,12 +886,6 @@ err_t CallCommand(Label * asmLabel, ArgValues * newValues, uint8_t * commandCode
     return ERR_OK;
 }
 
-err_t WriteJumpMark(Label * label, const char * arg, int * newValue, uint8_t * commandCode) {
-
-    return ERR_OK;
-
-}
-
 void BeginListing(Assembler * assembler) {
 
     ASSERT(assembler);
@@ -913,6 +907,7 @@ void BeginListing(Assembler * assembler) {
 
     fprintf(assembler->listFile,
         "------------------------------------------------------------------------\n");
+    fflush(assembler->listFile);
     
 }
 
@@ -954,6 +949,7 @@ void AsmListing(Assembler * assembler, ArgValues newValues, uint8_t newCommandCo
     fprintf(assembler->listFile, "| %-24s", bitCodeLine);
     fprintf(assembler->listFile, "| %-23s|", sourceLine);
     fprintf(assembler->listFile, "\n");
+    fflush(assembler->listFile);
 }
 
 char * toBinary(uint8_t num, char * buffer, size_t bufSize) {
@@ -974,6 +970,7 @@ char * toBinary(uint8_t num, char * buffer, size_t bufSize) {
 void EndListing(Assembler * assembler) {
 
     ASSERT(assembler);
+    printf("END of listing\n");
     
     if (assembler->listFile == NULL) return;
 
@@ -985,19 +982,18 @@ void EndListing(Assembler * assembler) {
         "------------------------------------------------------------------------\n");
 
     fclose(assembler->listFile);
-
 }
 
 err_t AsmDtor(Assembler * assembler) {
 
     ASSERT(assembler);
 
+    if (assembler->isListing) EndListing(assembler);
+
     free(assembler->readFrom);
     free(assembler->writeTo);
     free(assembler->fAsmSource.text_ptr);
     free(assembler->fAsmSource.index->index);
-
-    if (assembler->isListing) EndListing(assembler);
 
     return ERR_OK;
 }
