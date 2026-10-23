@@ -537,6 +537,10 @@ err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode,
         if (strcmp(command->commandPtr, "DIV") != 0) return ERR_INTPR;
         return GetMasksCode(DIV_C, command, argument, commandCode, newValues);
 
+    case (HASH_SQRT):
+        if (strcmp(command->commandPtr, "SQRT") != 0) return ERR_INTPR;
+        return GetMasksCode(SQRT_C, command, argument, commandCode, newValues);
+
     case (HASH_OUT):
         if (strcmp(command->commandPtr, "OUT") != 0) return ERR_INTPR;
         return GetMasksCode(OUT_C, command, argument, commandCode, newValues);
