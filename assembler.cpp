@@ -6,6 +6,7 @@ typedef int err_t;
 #include <math.h>
 #include <limits.h>
 #include <stdint.h>
+#include <getopt.h>
 
 #include "include/errors.h"
 #include "include/colors.h"
@@ -16,9 +17,8 @@ typedef int err_t;
 #ifdef Wa
 #define CODE_LISTING(...) AsmListing(__VA_ARGS__)
 #else
-#define CODE_LISTING(...) (void)0;
+#define CODE_LISTING(...) (void)0
 #endif
-
 
 struct Marks {
     int * Label;
@@ -34,6 +34,7 @@ struct Assembler {
     Marks label = {};
 
     FILE * listFile;
+    bool isListing;
 };
 
 struct Command {
@@ -90,7 +91,7 @@ const int POISON_VALUE = INT32_MAX;
 err_t AsmCtor(Assembler * assembler);
 err_t AsmDtor(Assembler * assembler);
 
-err_t ArgvParser(const int argc, const char * argv[], Assembler * fileInfo);
+err_t ArgvParser(int argc, char * argv[], Assembler * assembler);
 
 err_t Assemble(Assembler * assembler);
 
@@ -129,7 +130,7 @@ void BeginListing(Assembler * assembler);
 err_t AsmListing(Assembler * assembler, ArgValues newValues, uint8_t newCommandCode, size_t count);
 void EndListing(Assembler * assembler);
 
-int main(const int argc, const  char * argv[]) {
+int main(int argc, char * argv[]) {
 
     printf("\nFile <%s>, [%s]\n", __FILE__, __TIME__);
 
@@ -188,34 +189,49 @@ err_t AsmCtor(Assembler * assembler) {
 
 }
 
-err_t ArgvParser(const int argc, const char * argv[], Assembler * fileInfo) {
+err_t ArgvParser(int argc, char * argv[], Assembler * assembler) {
 
     ASSERT(argv);
     ASSERT(*argv);
-    ASSERT(fileInfo);
+    ASSERT(assembler);
 
-    if (((argc == 3) || (argc == 5)) && (!strcmp(argv[1], CMD_FLAG_ASM))) {
+    int flag = 0;
 
-        if (!argv[2]) return false;
+    struct option longOptions[] = {
+        {"asmsource", required_argument, 0, 'a'},
+        {"bytecode",  required_argument, 0, 'b'},
+        {"listing",   no_argument,       0, 'l'},
+        {0, 0, 0, 0} 
+    };
 
-        //! User put asm filename, so assembler must make a bytecode
+    int optIndex = 0;
 
-        (*fileInfo).readFrom = (char *)argv[2];
+    while ((flag = getopt_long(argc, argv, "", longOptions, &optIndex)) != -1) {
 
-        //! User's filename
-        if ((argc == 5) && !strcmp(argv[3], CMD_FLAG_BC)) {
-            (*fileInfo).writeTo = (char *)argv[4];
-            return true;
+        switch (flag)
+        {
+        
+        case ('a'): {
+            assembler->readFrom = strdup(optarg);
+            if (!assembler->readFrom) return false;
+            break;
         }
+        case ('b'): {
+            assembler->writeTo = strdup(optarg);
+            if (!assembler->writeTo) return false;
+            break;
+        }
+        case ('l'):
+            assembler->isListing = true;
+            return true;
+            break;
 
-        //! Else - default filename
-        (*fileInfo).writeTo  = (char *)PROG_BYTECODE_FILE;
+        default: return false;
 
-        return true;
+        }
     }
 
-    printf("\nError of reading stdin\n");
-    return false;
+    return true;
 }
 
 err_t Assemble(Assembler * assembler) {
