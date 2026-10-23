@@ -1,12 +1,8 @@
 typedef int err_t;
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <ctype.h>
 #include <math.h>
 #include <limits.h>
-#include <stdint.h>
-#include <string.h>
 #include <getopt.h>
 
 #include "include/errors.h"
@@ -14,6 +10,17 @@ typedef int err_t;
 #include "include/io.h"
 #include "include/commands.h"
 #include "hashcommands.h"
+
+struct LabelEntry {
+    size_t labelHash;
+    ssize_t address;
+};
+
+struct Label {
+    LabelEntry * label;
+    size_t nMark;
+    size_t capacity;
+};
 
 struct Marks {
     int * Label;
@@ -26,7 +33,7 @@ struct Assembler {
 
     FileStat fAsmSource = {};
 
-    Marks label = {};
+    Label asmLabel = {};
 
     FILE * listFile;
     bool isListing;
@@ -77,8 +84,6 @@ char * BYTECODE_FILENAME = NULL;
 
 const size_t LABEL_SIZE = 100;
 
-const int POISON_VALUE = INT32_MAX;
-
 //! -------------------------------------------------------------------------
 //! Functions for ASSEMBLER
 //! -------------------------------------------------------------------------
@@ -90,8 +95,8 @@ err_t ArgvParser(int argc, char * argv[], Assembler * assembler);
 
 err_t Assemble(Assembler * assembler);
 
-err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode,
-                                  Argument * argument, ArgValues * newValues);
+err_t GetCommandCode(Label * asmLabel, Command * command, uint8_t * commandCode, 
+                                    ArgValues * newValues);
 
 err_t ConstCode(uint8_t defaultMask, uint8_t * commandCode, ArgValues * argValues, int32_t newConst);
 err_t RegCode(uint8_t defaultMask, uint8_t * commandCode, ArgValues * argValues, char * regName);
@@ -104,14 +109,16 @@ err_t MemRegConstCode(uint8_t defaultMask, uint8_t * commandCode,
 
 int GetRegCode(Argument * arg2);
 
-err_t GetMasksCode(uint8_t defaultValue, Command * command, Argument * arg,
+err_t CallCommand(Label * asmLabel, ArgValues * newValues, uint8_t * commandCode);
+
+err_t GetMasksCode(uint8_t defaultValue, Command * command,
                                            uint8_t * commandCode, ArgValues * argValues);
 
-err_t WriteJumpMark(Marks * label, const char * arg, int * newValue, uint8_t * commandCode);
-err_t GetLabel(Marks * label, ssize_t index, int * newValue);
+err_t WriteJumpMark(Label * label, const char * arg, int * newValue, uint8_t * commandCode);
+err_t GetLabel(Label * asmLabel, ArgValues * newValues);
 
-err_t SetLabel(Marks * label, const char * arg1, const size_t currIndex);
-err_t ReadMarkIndex(Marks * label, const char * arg2, int * newValue);
+err_t SetLabel(Label * label, const char * arg1, const size_t currIndex);
+err_t ReadMarkIndex(const char * arg2, size_t * newLabelHash);
 
 //! Write commands to the file with byte code
 size_t DjbHash(const void * data, size_t size);
@@ -173,11 +180,11 @@ err_t AsmCtor(Assembler * assembler) {
         return ERR_ASM_CTOR;
     }
 
-    int * newLabel = (int *)calloc(LABEL_SIZE, sizeof(int));
+    LabelEntry * newLabel = (LabelEntry *)calloc(LABEL_SIZE, sizeof(LabelEntry));
     if (!newLabel) return ERR_CTOR;
-    assembler->label.Label = newLabel;
+    assembler->asmLabel.label = newLabel;
 
-    for (size_t i = 0; i < LABEL_SIZE; i++) { assembler->label.Label[i] = -1; }
+    for (size_t i = 0; i < LABEL_SIZE; i++) { assembler->asmLabel.label[i].address = -1; }
 
     if (assembler->isListing) BeginListing(assembler);
     
@@ -357,7 +364,7 @@ err_t GetCodeArguments(Assembler * assembler, size_t * count, size_t i,
     // Write a mark to the label
     if (newValues->arg1[0] == ':') {
 
-        err_t makeMarkStat = SetLabel(&(assembler->label), newValues->arg1, *count);
+        err_t makeMarkStat = SetLabel(&(assembler->asmLabel), newValues->arg1, *count);
         if (makeMarkStat != ERR_OK) {
             printf("Make mark error\n");
             return ERR_ASM;
@@ -369,9 +376,9 @@ err_t GetCodeArguments(Assembler * assembler, size_t * count, size_t i,
     }
 
     Command command   = {.commandPtr = newValues->arg1, .commandSize = strlen(newValues->arg1)};
-    Argument argument = {.argPtr = newValues->arg2, .argSize = strlen(newValues->arg2)};
+    // Argument argument = {.argPtr = newValues->arg2, .argSize = strlen(newValues->arg2)};
 
-    err_t interpreterStat = GetCommandCode(&(assembler->label), &command, newCommandCode, &argument, newValues);
+    err_t interpreterStat = GetCommandCode(&(assembler->asmLabel), &command, newCommandCode, newValues);
 
     if (interpreterStat != ERR_OK) {
     
@@ -380,10 +387,6 @@ err_t GetCodeArguments(Assembler * assembler, size_t * count, size_t i,
         return ERR_ASM;
     
     }
-
-    
-    //! Count in bytes
-    // *count += 1 + (newValues->usedArgs * sizeof(int32_t));
     
     return ERR_OK;
 
@@ -419,57 +422,67 @@ int GetRegCode(Argument * arg2) {
 
 }
 
-err_t SetLabel(Marks * label, const char * arg1, const size_t currIndex) {
+err_t SetLabel(Label * asmLabel, const char * arg1, const size_t currIndex) {
 
-    ASSERT(label);
+    ASSERT(asmLabel);
     ASSERT(arg1);
 
-    ssize_t nMark = -1;
+    size_t newLabelHash = 0;
+    if (ReadMarkIndex(arg1, &newLabelHash) != ERR_OK) return ERR_SET_LABEL;
 
-    int scanStat = sscanf(arg1, ":%zd", &nMark);
+    if (asmLabel->nMark >= LABEL_SIZE) return ERR_MARK;
+
+    asmLabel->label[asmLabel->nMark].labelHash = newLabelHash;
+    asmLabel->label[asmLabel->nMark].address   = currIndex;
+
+    if (asmLabel->nMark >= LABEL_SIZE) return ERR_MARK;
+
+    asmLabel->nMark++;
+
+    return ERR_OK;
+
+}
+
+err_t ReadMarkIndex(const char * arg2, size_t * newLabelHash) {
+
+    ASSERT(newLabelHash);
+    ASSERT(arg2);
+
+    char newLabelVal[MAX_COMMAND_LEN] = "";
+
+    int scanStat = sscanf(arg2, ":%30s", newLabelVal);
 
     if (scanStat != 1) {
         printf("ERROR OF MARK NUMBER READING\n");
         return ERR_MARK;
     }
 
-    if (nMark < 0 || nMark >= LABEL_SIZE) return ERR_MARK;
+    // if (label->nMark >= LABEL_SIZE) return ERR_MARK;
 
-    label->nMark = nMark;
-    label->Label[nMark] = (int)currIndex;
+    *newLabelHash = DjbHash(newLabelVal, strlen(newLabelVal));
 
     return ERR_OK;
-
 }
 
-err_t ReadMarkIndex(Marks * label, const char * arg2, int * newValue) {
+err_t GetLabel(Label * asmLabel, ArgValues * newValues) {
 
-    ASSERT(label);
-    ASSERT(arg2);
-    ASSERT(newValue);
+    ASSERT(asmLabel);
+    ASSERT(newValues);
 
-    ssize_t index = -1; // number of mark
-    int indexStat = sscanf(arg2, ":%zd", &index);
+    size_t newLabelHash = 0;
+    ssize_t newIndex = -1;
+    if (ReadMarkIndex(newValues->arg2, &newLabelHash) != ERR_OK) return ERR_SET_LABEL;
 
-    if (indexStat != 1) return ERR_SYNTAX;
+    for (size_t i = 0; i < asmLabel->nMark; i++) {
 
-    return GetLabel(label, index, newValue);
-}
+        if (asmLabel->label[i].labelHash == newLabelHash) {
+            newIndex = asmLabel->label[i].address;
+        }
 
-err_t GetLabel(Marks * label, ssize_t index, int * newValue) {
-
-    ASSERT(label);
-    ASSERT(newValue);
-
-    if (index < 0 || index >= LABEL_SIZE) return ERR_MARK;
-
-    int labelValue = label->Label[index];
-    if (labelValue < 0) {
-        return ERR_SKIP_ARG;
     }
-
-    *newValue = labelValue;
-
+    
+    newValues->value1 = newIndex;
+    
     return ERR_OK;
 }
 
@@ -495,13 +508,12 @@ err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFil
 
 }
 
-err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode, 
-                                    Argument * argument, ArgValues * newValues) {
+err_t GetCommandCode(Label * asmLabel, Command * command, uint8_t * commandCode, 
+                                    ArgValues * newValues) {
 
-    ASSERT(label);
+    ASSERT(asmLabel);
     ASSERT(command);
     ASSERT(commandCode);
-    ASSERT(argument);
     ASSERT(newValues);
 
     size_t hashCommand = DjbHash((const void *)(command->commandPtr), command->commandSize);
@@ -511,70 +523,59 @@ err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode,
     case (HASH_PUSH): {
         if (strcmp(command->commandPtr, "PUSH") != 0) return ERR_INTPR;
 
-        return GetMasksCode(PUSH_C, command, argument, commandCode, newValues);
+        return GetMasksCode(PUSH_C, command, commandCode, newValues);
         
     }
 
     case (HASH_POP): {
         if (strcmp(command->commandPtr, "POP") != 0) return ERR_INTPR;
 
-        return GetMasksCode(POP_C, command, argument, commandCode, newValues);
+        return GetMasksCode(POP_C, command, commandCode, newValues);
     }
 
     case (HASH_IN):
         if (strcmp(command->commandPtr, "IN") != 0) return ERR_INTPR;
-        return GetMasksCode(IN_C, command, argument, commandCode, newValues);
+
+        return GetMasksCode(IN_C, command, commandCode, newValues);
 
     case (HASH_ADD):
         if (strcmp(command->commandPtr, "ADD") != 0) return ERR_INTPR;
-        return GetMasksCode(ADD_C, command, argument, commandCode, newValues);
+        return GetMasksCode(ADD_C, command, commandCode, newValues);
 
     case (HASH_SUB):
         if (strcmp(command->commandPtr, "SUB") != 0) return ERR_INTPR;
-        return GetMasksCode(SUB_C, command, argument, commandCode, newValues);
+        return GetMasksCode(SUB_C, command, commandCode, newValues);
 
     case (HASH_DIV):
         if (strcmp(command->commandPtr, "DIV") != 0) return ERR_INTPR;
-        return GetMasksCode(DIV_C, command, argument, commandCode, newValues);
+        return GetMasksCode(DIV_C, command, commandCode, newValues);
 
     case (HASH_SQRT):
         if (strcmp(command->commandPtr, "SQRT") != 0) return ERR_INTPR;
-        return GetMasksCode(SQRT_C, command, argument, commandCode, newValues);
+        return GetMasksCode(SQRT_C, command, commandCode, newValues);
 
     case (HASH_OUT):
         if (strcmp(command->commandPtr, "OUT") != 0) return ERR_INTPR;
-        return GetMasksCode(OUT_C, command, argument, commandCode, newValues);
+        return GetMasksCode(OUT_C, command, commandCode, newValues);
 
     case (HASH_HLT):
         if (strcmp(command->commandPtr, "HLT") != 0) return ERR_INTPR;
-        return GetMasksCode(HLT_C, command, argument, commandCode, newValues);
+        return GetMasksCode(HLT_C, command, commandCode, newValues);
 
     case (HASH_MUL):
         if (strcmp(command->commandPtr, "MUL") != 0) return ERR_INTPR;
-        return GetMasksCode(MUL_C, command, argument, commandCode, newValues);
+        return GetMasksCode(MUL_C, command, commandCode, newValues);
 
     case (HASH_CALL): {
         if (strcmp(command->commandPtr, "CALL") != 0) return ERR_INTPR;
 
-        err_t markStat = ReadMarkIndex(label, argument->argPtr, &(newValues->value1));
-
-        if (markStat == ERR_SKIP_ARG) {
-            newValues->value1 = 0;
-        }
-        else if (markStat != ERR_OK) {
-            return ERR_MARK;
-        }
-
-        *commandCode = CALL_C | 0x20;
-        newValues->usedArgs = 1;
-
-        return ERR_OK;
+        return CallCommand(asmLabel, newValues, commandCode);
 
     }
 
     case (HASH_RET):
         if (strcmp(command->commandPtr, "RET") != 0) return ERR_INTPR;
-        return GetMasksCode(RET_C, command, argument, commandCode, newValues);
+        return GetMasksCode(RET_C, command, commandCode, newValues);
 
     case (HASH_JUMP): {
 
@@ -583,7 +584,7 @@ err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode,
         *commandCode = JUMP_C | 0x20;
         newValues->usedArgs = 1;
 
-        return WriteJumpMark(label, argument->argPtr, &newValues->value1, commandCode);
+        return GetLabel(asmLabel, newValues);
     }
 
     case (HASH_JA): {
@@ -592,8 +593,7 @@ err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode,
         *commandCode = JA_C | 0x20;
         newValues->usedArgs = 1;
 
-        return WriteJumpMark(label, argument->argPtr, &newValues->value1, commandCode);
-
+        return GetLabel(asmLabel, newValues);
     }
 
     case (HASH_JAE): {
@@ -602,7 +602,7 @@ err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode,
         *commandCode = JAE_C | 0x20;
         newValues->usedArgs = 1;
 
-        return WriteJumpMark(label, argument->argPtr, &newValues->value1, commandCode);
+        return GetLabel(asmLabel, newValues);
 
     }
 
@@ -611,7 +611,8 @@ err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode,
 
         newValues->usedArgs = 1;
         *commandCode = JB_C | 0x20;
-        return WriteJumpMark(label, argument->argPtr, &newValues->value1, commandCode);
+
+        return GetLabel(asmLabel, newValues);
 
     }
 
@@ -620,7 +621,8 @@ err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode,
 
         newValues->usedArgs = 1;
         *commandCode = JBE_C | 0x20;
-        return WriteJumpMark(label, argument->argPtr, &newValues->value1, commandCode);
+
+        return GetLabel(asmLabel, newValues);
 
     }
 
@@ -629,8 +631,8 @@ err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode,
 
         newValues->usedArgs = 1;
         *commandCode = JE_C | 0x20;
-        return WriteJumpMark(label, argument->argPtr, &newValues->value1, commandCode);
 
+        return GetLabel(asmLabel, newValues);
     }
 
     case (HASH_JNE): {
@@ -638,8 +640,8 @@ err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode,
 
         newValues->usedArgs = 1;
         *commandCode = JNE_C | 0x20;
-        return WriteJumpMark(label, argument->argPtr, &newValues->value1, commandCode);
 
+        return GetLabel(asmLabel, newValues);
     }
     default:
         return ERR_INTPR;
@@ -648,14 +650,12 @@ err_t GetCommandCode(Marks * label, Command * command, uint8_t * commandCode,
     return ERR_INTPR;
 }
 
-err_t GetMasksCode(uint8_t defaultValue, Command * command, Argument * arg,
+err_t GetMasksCode(uint8_t defaultValue, Command * command,
                                            uint8_t * commandCode, ArgValues * argValues) {
 
     ASSERT(command);
-    ASSERT(arg);
     ASSERT(commandCode);
     ASSERT(argValues);
-    ASSERT(arg->argPtr);
 
     uint8_t defaultMask = defaultValue;
 
@@ -663,7 +663,7 @@ err_t GetMasksCode(uint8_t defaultValue, Command * command, Argument * arg,
 
     // No args
     if (defaultValue != PUSH_C && defaultValue != POP_C) {
-        if (arg->argSize != 0) return ERR_COMMAND;
+        if (strlen(argValues->arg2) != 0) return ERR_COMMAND;
 
         *commandCode = defaultValue;
         argValues->usedArgs = 0;
@@ -682,8 +682,8 @@ err_t GetMasksCode(uint8_t defaultValue, Command * command, Argument * arg,
     int32_t newConst = 0;
 
     // Constant
-    if (defaultValue != POP_C && sscanf(arg->argPtr, "%d%n", &newConst, &bytesArg) == 1
-                               && arg->argPtr[bytesArg] == '\0') {
+    if (defaultValue != POP_C && sscanf(argValues->arg2, "%d%n", &newConst, &bytesArg) == 1
+                               && argValues->arg2[bytesArg] == '\0') {
 
         return ConstCode(defaultMask, commandCode, argValues, newConst);
     
@@ -693,16 +693,16 @@ err_t GetMasksCode(uint8_t defaultValue, Command * command, Argument * arg,
     char regName[3] = "";
     bytesArg = 0;
 
-    if (sscanf(arg->argPtr, "%2[A-ZX]%n", regName, &bytesArg) == 1
-                    && bytesArg == 2 && arg->argPtr[bytesArg] == '\0') {
+    if (sscanf(argValues->arg2, "%2[A-ZX]%n", regName, &bytesArg) == 1
+                    && bytesArg == 2 && argValues->arg2[bytesArg] == '\0') {
             
             return RegCode(defaultMask, commandCode, argValues, regName);
     }
 
     //! For ram ------------------------------------------------------
     bytesArg = 0;
-    if (sscanf(arg->argPtr, "[%d]%n", &newConst, &bytesArg) == 1
-                            && arg->argPtr[bytesArg] == '\0') {
+    if (sscanf(argValues->arg2, "[%d]%n", &newConst, &bytesArg) == 1
+                            && argValues->arg2[bytesArg] == '\0') {
 
         return MemConstCode(defaultMask, commandCode, argValues, &newConst);
     }
@@ -711,8 +711,8 @@ err_t GetMasksCode(uint8_t defaultValue, Command * command, Argument * arg,
     bytesArg = 0;
     regName[0] = '\0';
     
-    if (sscanf(arg->argPtr, "[%2[A-ZX]]%n", regName, &bytesArg) == 1 
-                                        && arg->argPtr[bytesArg] == '\0') {
+    if (sscanf(argValues->arg2, "[%2[A-ZX]]%n", regName, &bytesArg) == 1 
+                                        && argValues->arg2[bytesArg] == '\0') {
 
         return RegMemCode(defaultMask, commandCode, argValues, regName);
     }
@@ -720,8 +720,8 @@ err_t GetMasksCode(uint8_t defaultValue, Command * command, Argument * arg,
     //! For register + const  ----------------------------------------
     bytesArg = 0;
     regName[0] = '\0';
-    sscanf(arg->argPtr, "%2[A-ZX]+%d%n", regName, &newConst, &bytesArg);
-    if (arg->argPtr[bytesArg] == '\0') {
+    sscanf(argValues->arg2, "%2[A-ZX]+%d%n", regName, &newConst, &bytesArg);
+    if (argValues->arg2[bytesArg] == '\0') {
 
         return RegConstCode(defaultMask, commandCode, argValues, regName, &newConst);
     }
@@ -729,8 +729,8 @@ err_t GetMasksCode(uint8_t defaultValue, Command * command, Argument * arg,
     //! For RAM, register and const
     bytesArg = 0;
     regName[0] = '\0';
-    if (sscanf(arg->argPtr, "[%2[A-ZX]+%d]%n", regName, &newConst, &bytesArg) == 2
-                            && arg->argPtr[bytesArg] == '\0') {
+    if (sscanf(argValues->arg2, "[%2[A-ZX]+%d]%n", regName, &newConst, &bytesArg) == 2
+                            && argValues->arg2[bytesArg] == '\0') {
 
         return MemRegConstCode(defaultMask, commandCode, argValues, regName, &newConst);
     }
@@ -863,16 +863,30 @@ err_t MemRegConstCode(uint8_t defaultMask, uint8_t * commandCode,
 
 }
 
-err_t WriteJumpMark(Marks * label, const char * arg, int * newValue, uint8_t * commandCode) {
+err_t CallCommand(Label * asmLabel, ArgValues * newValues, uint8_t * commandCode) {
 
-    err_t markStat = ReadMarkIndex(label, arg, newValue);
+    size_t currHash = 0;
 
-    if (markStat == ERR_SKIP_ARG) {
-        *newValue = 0;
+    err_t readStat = ReadMarkIndex(newValues->arg2, &currHash);
+    if (readStat != ERR_OK) return ERR_COMMAND;
+
+    err_t labelStat = GetLabel(asmLabel, newValues);
+
+    if (labelStat == ERR_SKIP_ARG) {
+        newValues->value1 = 0;
     }
-    else if (markStat != ERR_OK) {
+
+    else if (labelStat != ERR_OK) {
         return ERR_MARK;
     }
+
+    *commandCode = CALL_C | 0x20;
+    newValues->usedArgs = 1;
+    
+    return ERR_OK;
+}
+
+err_t WriteJumpMark(Label * label, const char * arg, int * newValue, uint8_t * commandCode) {
 
     return ERR_OK;
 
@@ -978,7 +992,6 @@ err_t AsmDtor(Assembler * assembler) {
 
     ASSERT(assembler);
 
-    free(assembler->label.Label);
     free(assembler->readFrom);
     free(assembler->writeTo);
     free(assembler->fAsmSource.text_ptr);

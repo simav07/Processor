@@ -4,8 +4,6 @@ typedef double ramElem_t;
 #include "include/io.h"
 #include "include/commands.h"
 #include "hashcommands.h"
-#include <string.h>
-#include <time.h>
 #include <windows.h>
 
 const size_t nRegisters = 5;
