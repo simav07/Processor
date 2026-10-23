@@ -1,336 +1,378 @@
-typedef int err_t;
-
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <stdint.h>
-#include <limits.h>
+#include <string.h>
 
-#include "./include/errors.h"
-#include "./include/colors.h"
-#include "./include/commands.h"
+#include "include/errors.h"
+#include "include/commands.h"
+#include "include/io.h"
 
-const char *CMD_FLAG_BYTECODE = "--bytecode";
-const char *PROG_ASM_FILE = "disassembled.asm";
-const int MAX_MARKS = 20;
+const char * CMD_FLAG_BYTECODE = "--bytecode";
 
-struct DisasmFilesInfo {
-    const char *readFrom = NULL;
-    const char *writeTo = NULL;
+const uint8_t COMMAND_MASK = 0x1F;
+const uint8_t CONST_MASK   = 0x20;
+const uint8_t REG_MASK     = 0x40;
+const uint8_t RAM_MASK     = 0x80;
+
+struct ByteCode {
+    uint8_t * data;
+    size_t size;
+    size_t * labels;
 };
 
-struct Instruction {
-    int code = 0;
-    int arg = 0;
-    int hasArg = 0;
-    long offset = 0;       // позиция кода команды в потоке числовых значений
-};
+err_t ArgvParser(const int argc, const char * argv[], const char ** byteCodeFile);
+err_t Disassemble(const char * byteCodeFile);
+err_t ReadByteCode(const char * byteCodeFile, ByteCode * byteCode);
+err_t GetInstructionSize(const uint8_t * byteCode, size_t byteCodeLen,
+                         size_t address, size_t * instrSize);
+err_t MarkLabels(const uint8_t * byteCode, size_t byteCodeLen, size_t * labelAddress);
+err_t WriteByteCode(const uint8_t * byteCode, size_t byteCodeLen, const size_t * labelAddress);
+err_t WriteInstruction(uint8_t commandCode, uint8_t flags, int32_t arg1, int32_t arg2, size_t label);
+err_t ReadInstructionArguments(const uint8_t * byteCode, size_t address, uint8_t flags,
+                               int32_t * arg1, int32_t * arg2);
+const char * GetCommandName(uint8_t commandCode);
+const char * GetRegisterName(int32_t regIndex);
+bool IsPushPop(uint8_t commandCode);
+bool IsJump(uint8_t commandCode);
 
-struct Mark {
-    long offset = 0;
-    int number = 0;
-};
+int main(const int argc, const char * argv[]) {
 
-err_t GetDisasmFilenames(int argc, char *argv[], DisasmFilesInfo *info);
-err_t Disassemble(const char *byteCodeName, const char *asmName);
-int CommandHasArgument(int code);
-const char *GetRegisterName(int regCode);
-const char *GetCommandName(int code);
-int FindMarkByOffset(const Mark *marks, int nMarks, long offset);
-err_t ReadInstructions(FILE *file, Instruction **instructions, size_t *nInstructions);
-err_t WriteAsm(FILE *file, const Instruction *instructions, size_t nInstructions,
-               const Mark *marks, int nMarks);
+    const char * byteCodeFile = NULL;
 
-int main(int argc, char *argv[]) {
-    printf("\nFile <%s>, [%s]\n", __FILE__, __TIME__);
-
-    DisasmFilesInfo info = {};
-
-    if (GetDisasmFilenames(argc, argv, &info) != ERR_OK) {
-        printf("Usage: %s %s <bytecode-file> [asm-output-file]\n",
-               argv[0], CMD_FLAG_BYTECODE);
-        return ERR_ASM;
+    int filenamesStat = ArgvParser(argc, argv, &byteCodeFile);
+    if (filenamesStat != ERR_OK) {
+        fprintf(stderr, "Usage: disassembler --bytecode <file>\n");
+        return filenamesStat;
     }
 
-    err_t status = Disassemble(info.readFrom, info.writeTo);
-    if (status != ERR_OK) {
-        printf(BOLD_RED "Disassembling failed.\n" RESET);
-        return status;
+    int disassembleStat = Disassemble(byteCodeFile);
+    if (disassembleStat != ERR_OK) {
+        fprintf(stderr, "Error of disassembling byte code\n");
+        return disassembleStat;
     }
 
-    printf(BOLD_GREEN "Successful disassembling.\n" RESET);
-    printf(YELLOW "Assembly source: <%s>\n" RESET, info.writeTo);
-    return 0;
-}
-
-err_t GetDisasmFilenames(int argc, char *argv[], DisasmFilesInfo *info) {
-    if (argv == NULL || info == NULL) return ERR_ASM;
-
-    if ((argc == 3 || argc == 4) &&
-        strcmp(argv[1], CMD_FLAG_BYTECODE) == 0 &&
-        argv[2] != NULL && argv[2][0] != '\0') {
-        info->readFrom = argv[2];
-        info->writeTo = (argc == 4) ? argv[3] : PROG_ASM_FILE;
-
-        if (strcmp(info->readFrom, info->writeTo) == 0) {
-            printf("Input and output filenames must be different.\n");
-            return ERR_ASM;
-        }
-        return ERR_OK;
-    }
-
-    return ERR_ASM;
-}
-
-/*
- * В bytecode, который создаёт данный assembler, значения записываются
- * через fprintf("%d ..."), поэтому читаем их как текстовые целые числа.
- */
-err_t ReadInstructions(FILE *file, Instruction **instructions, size_t *nInstructions) {
-    if (file == NULL || instructions == NULL || nInstructions == NULL)
-        return ERR_ASM;
-
-    size_t capacity = 16;
-    size_t count = 0;
-    Instruction *data = (Instruction *)calloc(capacity, sizeof(Instruction));
-    if (data == NULL) return ERR_CALLOC;
-
-    long offset = 0;
-    int code = 0;
-
-    while (fscanf(file, "%d", &code) == 1) {
-        if (count == capacity) {
-            if (capacity > SIZE_MAX / 2 / sizeof(Instruction)) {
-                free(data);
-                return ERR_OVERFLOW;
-            }
-
-            capacity *= 2;
-            Instruction *newData =
-                (Instruction *)realloc(data, capacity * sizeof(Instruction));
-            if (newData == NULL) {
-                free(data);
-                return ERR_CALLOC;
-            }
-            data = newData;
-        }
-
-        data[count].code = code;
-        data[count].offset = offset;
-        data[count].hasArg = CommandHasArgument(code);
-
-        if (data[count].hasArg) {
-            if (fscanf(file, "%d", &data[count].arg) != 1) {
-                printf("Bytecode ends before the argument of command %d.\n", code);
-                free(data);
-                return ERR_ASM;
-            }
-        }
-
-        offset += data[count].hasArg ? 2 : 1;
-        ++count;
-    }
-
-    if (!feof(file)) {
-        printf("Bytecode contains an invalid value.\n");
-        free(data);
-        return ERR_ASM;
-    }
-
-    *instructions = data;
-    *nInstructions = count;
     return ERR_OK;
 }
 
-int CommandHasArgument(int code) {
-    switch (code) {
-        case PUSH_C:
-        case PUSH_R:
-        case POP_R:
-        case JUMP_C:
-        case JA_C:
-            return 1;
+err_t ArgvParser(const int argc, const char * argv[], const char ** byteCodeFile) {
 
-        default:
-            return 0;
+    ASSERT(argv);
+    ASSERT(byteCodeFile);
+
+    if (argc != 3 || strcmp(argv[1], CMD_FLAG_BYTECODE) != 0) {
+        return ERR_FILEOPEN;
+    }
+
+    *byteCodeFile = argv[2];
+
+    return ERR_OK;
+}
+
+err_t Disassemble(const char * byteCodeFile) {
+
+    ASSERT(byteCodeFile);
+
+    ByteCode byteCode = {};
+
+    int readStat = ReadByteCode(byteCodeFile, &byteCode);
+    if (readStat != ERR_OK) return readStat;
+
+    byteCode.labels = (size_t *)calloc(byteCode.size + 1, sizeof(size_t));
+    if (byteCode.labels == NULL) {
+        free(byteCode.data);
+        return ERR_CTOR;
+    }
+
+    int labelsStat = MarkLabels(byteCode.data, byteCode.size, byteCode.labels);
+    if (labelsStat == ERR_OK) {
+        labelsStat = WriteByteCode(byteCode.data, byteCode.size, byteCode.labels);
+    }
+
+    free(byteCode.labels);
+    free(byteCode.data);
+
+    return labelsStat;
+}
+
+err_t ReadByteCode(const char * byteCodeFile, ByteCode * byteCode) {
+
+    ASSERT(byteCodeFile);
+    ASSERT(byteCode);
+
+    FILE * fileByteCode = fopen(byteCodeFile, "rb");
+    if (fileByteCode == NULL) return ERR_FILEOPEN;
+
+    if (fseek(fileByteCode, 0, SEEK_END) != 0) {
+        fclose(fileByteCode);
+        return ERR_BYTECODE;
+    }
+
+    long fileSize = ftell(fileByteCode);
+    if (fileSize < 0 || fseek(fileByteCode, 0, SEEK_SET) != 0) {
+        fclose(fileByteCode);
+        return ERR_BYTECODE;
+    }
+
+    byteCode->size = (size_t)fileSize;
+    byteCode->data = (uint8_t *)calloc(byteCode->size + 1, sizeof(uint8_t));
+    if (byteCode->data == NULL) {
+        fclose(fileByteCode);
+        return ERR_CTOR;
+    }
+
+    if (fread(byteCode->data, sizeof(uint8_t), byteCode->size, fileByteCode) != byteCode->size) {
+        free(byteCode->data);
+        byteCode->data = NULL;
+        fclose(fileByteCode);
+        return ERR_BYTECODE;
+    }
+
+    fclose(fileByteCode);
+
+    return ERR_OK;
+}
+
+err_t GetInstructionSize(const uint8_t * byteCode, size_t byteCodeLen,
+                         size_t address, size_t * instrSize) {
+
+    ASSERT(byteCode);
+    ASSERT(instrSize);
+
+    if (address >= byteCodeLen) return ERR_BYTECODE;
+
+    uint8_t flags = byteCode[address];
+    uint8_t commandCode = flags & COMMAND_MASK;
+
+    *instrSize = 1;
+
+    if (commandCode == SKIP_STEP) return ERR_BYTECODE;
+
+    if (IsPushPop(commandCode)) {
+        if (flags & REG_MASK) *instrSize += sizeof(int32_t);
+        if (flags & CONST_MASK) *instrSize += sizeof(int32_t);
+    }
+    else if (IsJump(commandCode)) {
+        *instrSize += sizeof(int32_t);
+    }
+    else if (flags & (CONST_MASK | REG_MASK | RAM_MASK)) {
+        return ERR_BYTECODE;
+    }
+
+    if (*instrSize > byteCodeLen - address) return ERR_BYTECODE;
+
+    return ERR_OK;
+}
+
+err_t MarkLabels(const uint8_t * byteCode, size_t byteCodeLen, size_t * labelAddress) {
+
+    ASSERT(byteCode);
+    ASSERT(labelAddress);
+
+    size_t address = 0;
+    size_t nLabels = 0;
+
+    while (address < byteCodeLen) {
+
+        size_t instrSize = 0;
+        int sizeStat = GetInstructionSize(byteCode, byteCodeLen, address, &instrSize);
+        if (sizeStat != ERR_OK) return sizeStat;
+
+        uint8_t commandCode = byteCode[address] & COMMAND_MASK;
+
+        if (IsJump(commandCode)) {
+            int32_t target = 0;
+            memcpy(&target, byteCode + address + 1, sizeof(target));
+
+            if (target < 0 || (size_t)target >= byteCodeLen) return ERR_BYTECODE;
+
+            if (labelAddress[target] == 0) {
+                labelAddress[target] = ++nLabels;
+            }
+        }
+
+        address += instrSize;
+    }
+
+    return ERR_OK;
+}
+
+err_t WriteByteCode(const uint8_t * byteCode, size_t byteCodeLen, const size_t * labelAddress) {
+
+    ASSERT(byteCode);
+    ASSERT(labelAddress);
+
+    size_t address = 0;
+
+    while (address < byteCodeLen) {
+
+        if (labelAddress[address] != 0) {
+            printf(":%zu\n", labelAddress[address]);
+        }
+
+        uint8_t flags = byteCode[address];
+        uint8_t commandCode = flags & COMMAND_MASK;
+        size_t instrSize = 0;
+
+        int sizeStat = GetInstructionSize(byteCode, byteCodeLen, address, &instrSize);
+        if (sizeStat != ERR_OK) return sizeStat;
+
+        int32_t arg1 = 0;
+        int32_t arg2 = 0;
+
+        if (IsPushPop(commandCode)) {
+            int argsStat = ReadInstructionArguments(byteCode, address, flags, &arg1, &arg2);
+            if (argsStat != ERR_OK) return argsStat;
+        }
+        else if (IsJump(commandCode)) {
+            memcpy(&arg1, byteCode + address + 1, sizeof(arg1));
+        }
+
+        size_t label = 0;
+        if (IsJump(commandCode) && arg1 >= 0 && (size_t)arg1 < byteCodeLen) {
+            label = labelAddress[arg1];
+        }
+
+        int writeStat = WriteInstruction(commandCode, flags, arg1, arg2, label);
+        if (writeStat != ERR_OK) return writeStat;
+
+        address += instrSize;
+    }
+
+    return ERR_OK;
+}
+
+err_t ReadInstructionArguments(const uint8_t * byteCode, size_t address, uint8_t flags,
+                               int32_t * arg1, int32_t * arg2) {
+
+    ASSERT(byteCode);
+    ASSERT(arg1);
+    ASSERT(arg2);
+
+    size_t argIndex = address + 1;
+
+    if (flags & REG_MASK) {
+        memcpy(arg1, byteCode + argIndex, sizeof(*arg1));
+        argIndex += sizeof(int32_t);
+    }
+
+    if (flags & CONST_MASK) {
+        int32_t value = 0;
+        memcpy(&value, byteCode + argIndex, sizeof(value));
+
+        if (flags & REG_MASK) *arg2 = value;
+        else *arg1 = value;
+    }
+
+    return ERR_OK;
+}
+
+err_t WriteInstruction(uint8_t commandCode, uint8_t flags, int32_t arg1, int32_t arg2, size_t label) {
+
+    const char * commandName = GetCommandName(commandCode);
+    if (commandName == NULL) return ERR_COMMAND;
+
+    printf("%s", commandName);
+
+    if (IsPushPop(commandCode)) {
+
+        if (!(flags & (CONST_MASK | REG_MASK | RAM_MASK))) {
+            printf("\n");
+            return ERR_BYTECODE;
+        }
+
+        if (commandCode == POP_C && !(flags & RAM_MASK) &&
+            (!(flags & REG_MASK) || (flags & CONST_MASK))) {
+            printf("\n");
+            return ERR_BYTECODE;
+        }
+
+        printf(" ");
+
+        if (flags & RAM_MASK) printf("[");
+
+        if (flags & REG_MASK) {
+            const char * regName = GetRegisterName(arg1);
+            if (regName == NULL) {
+                printf("\n");
+                return ERR_COMMAND;
+            }
+
+            printf("%s", regName);
+        }
+
+        if (flags & CONST_MASK) {
+            if (flags & REG_MASK) printf("+");
+            printf("%d", (flags & REG_MASK) ? arg2 : arg1);
+        }
+
+        if (flags & RAM_MASK) printf("]");
+
+        printf("\n");
+        return ERR_OK;
+    }
+
+    if (IsJump(commandCode)) {
+        if (label == 0) return ERR_BYTECODE;
+        printf(" :%zu\n", label);
+        return ERR_OK;
+    }
+
+    if (flags & (CONST_MASK | REG_MASK | RAM_MASK)) return ERR_BYTECODE;
+
+    printf("\n");
+
+    return ERR_OK;
+}
+
+bool IsPushPop(uint8_t commandCode) {
+    return commandCode == PUSH_C || commandCode == POP_C;
+}
+
+bool IsJump(uint8_t commandCode) {
+
+    return commandCode == JUMP_C || commandCode == JA_C  ||
+           commandCode == JAE_C  || commandCode == JB_C  ||
+           commandCode == JBE_C  || commandCode == JE_C  ||
+           commandCode == JNE_C  || commandCode == CALL_C;
+}
+
+const char * GetCommandName(uint8_t commandCode) {
+
+    switch (commandCode) {
+
+        case PUSH_C: return "PUSH";
+        case ADD_C:  return "ADD";
+        case SUB_C:  return "SUB";
+        case DIV_C:  return "DIV";
+        case MUL_C:  return "MUL";
+        case POP_C:  return "POP";
+        case JUMP_C: return "JUMP";
+        case JA_C:   return "JA";
+        case JAE_C:  return "JAE";
+        case JB_C:   return "JB";
+        case JBE_C:  return "JBE";
+        case JE_C:   return "JE";
+        case JNE_C:  return "JNE";
+        case IN_C:   return "IN";
+        case CALL_C: return "CALL";
+        case RET_C:  return "RET";
+        case OUT_C:  return "OUT";
+        case HLT_C:  return "HLT";
+
+        default:     return NULL;
     }
 }
 
-const char *GetRegisterName(int regCode) {
-    switch (regCode) {
+const char * GetRegisterName(int32_t regIndex) {
+
+    switch (regIndex) {
+
         case 0: return "OX";
         case 1: return "AX";
         case 2: return "BX";
         case 3: return "CX";
         case 4: return "DX";
+
         default: return NULL;
     }
-}
-
-const char *GetCommandName(int code) {
-    switch (code) {
-        case PUSH_C: return "PUSH";
-        case PUSH_R: return "PUSH";
-        case POP_R:  return "POP";
-        case JUMP_C: return "JUMP";
-        case JA_C:   return "JA";
-        case ADD_C:  return "ADD";
-        case SUB_C:  return "SUB";
-        case DIV_C:  return "DIV";
-        case OUT_C:  return "OUT";
-        case HLT_C:  return "HLT";
-        case MUL_C:  return "MUL";
-        default:     return NULL;
-    }
-}
-
-int FindMarkByOffset(const Mark *marks, int nMarks, long offset) {
-    for (int i = 0; i < nMarks; ++i) {
-        if (marks[i].offset == offset) return marks[i].number;
-    }
-    return -1;
-}
-
-err_t WriteAsm(FILE *file, const Instruction *instructions, size_t nInstructions,
-               const Mark *marks, int nMarks) {
-    if (file == NULL) return ERR_ASM;
-
-    for (size_t i = 0; i < nInstructions; ++i) {
-        int markNumber = FindMarkByOffset(marks, nMarks, instructions[i].offset);
-        if (markNumber >= 0) {
-            fprintf(file, ":%d\n", markNumber);
-        }
-
-        const char *name = GetCommandName(instructions[i].code);
-        if (name == NULL) {
-            printf("Unknown command code %d at offset %ld.\n",
-                   instructions[i].code, instructions[i].offset);
-            return ERR_INTPR;
-        }
-
-        fprintf(file, "%s", name);
-
-        if (instructions[i].hasArg) {
-            int code = instructions[i].code;
-
-            if (code == PUSH_R || code == POP_R) {
-                const char *regName = GetRegisterName(instructions[i].arg);
-                if (regName == NULL) {
-                    printf("Invalid register code %d at offset %ld.\n",
-                           instructions[i].arg, instructions[i].offset);
-                    return ERR_REGISTER;
-                }
-                fprintf(file, " %s", regName);
-            } else if (code == JUMP_C || code == JA_C) {
-                int targetMark = FindMarkByOffset(marks, nMarks, instructions[i].arg);
-                if (targetMark >= 0) {
-                    fprintf(file, " :%d", targetMark);
-                } else {
-                    /*
-                     * Если адрес перехода не совпадает с началом инструкции,
-                     * сохраняем числовой адрес. Для повторной сборки такой
-                     * переход потребует поддержки числовых адресов в assembler.
-                     */
-                    fprintf(file, " %d", instructions[i].arg);
-                }
-            } else {
-                fprintf(file, " %d", instructions[i].arg);
-            }
-        }
-
-        fputc('\n', file);
-    }
-
-    /*
-     * A jump may target the position immediately after the final instruction.
-     * Emit such labels too, although the current assembler's zero-initialized
-     * label table cannot distinguish an undefined label from a label at offset 0.
-     */
-    long endOffset = 0;
-    if (nInstructions > 0) {
-        const Instruction *last = &instructions[nInstructions - 1];
-        endOffset = last->offset + (last->hasArg ? 2 : 1);
-    }
-
-    int endMark = FindMarkByOffset(marks, nMarks, endOffset);
-    if (endMark >= 0) {
-        fprintf(file, ":%d\n", endMark);
-    }
-
-    return ferror(file) ? ERR_INTPR : ERR_OK;
-}
-
-err_t Disassemble(const char *byteCodeName, const char *asmName) {
-    if (byteCodeName == NULL || asmName == NULL ||
-        strcmp(byteCodeName, asmName) == 0) {
-        return ERR_ASM;
-    }
-
-    FILE *input = fopen(byteCodeName, "r");
-    if (input == NULL) {
-        perror("Cannot open bytecode file");
-        return ERR_ASM;
-    }
-
-    Instruction *instructions = NULL;
-    size_t nInstructions = 0;
-    err_t status = ReadInstructions(input, &instructions, &nInstructions);
-    fclose(input);
-
-    if (status != ERR_OK) {
-        free(instructions);
-        return status;
-    }
-
-    /*
-     * Собираем адреса переходов и назначаем им метки :0, :1, ...
-     * В текущем проекте assembler хранит не более 20 меток.
-     */
-    Mark marks[MAX_MARKS] = {};
-    int nMarks = 0;
-
-    for (size_t i = 0; i < nInstructions; ++i) {
-        int code = instructions[i].code;
-        if (code != JUMP_C && code != JA_C) continue;
-
-        long target = instructions[i].arg;
-        long codeEnd = 0;
-        if (nInstructions > 0) {
-            const Instruction *last = &instructions[nInstructions - 1];
-            codeEnd = last->offset + (last->hasArg ? 2 : 1);
-        }
-
-        if (target < 0 || target > codeEnd) {
-            printf("Warning: jump target %ld is outside bytecode range [0, %ld].\n",
-                   target, codeEnd);
-        }
-
-        int alreadyAdded = 0;
-
-        for (int j = 0; j < nMarks; ++j) {
-            if (marks[j].offset == target) {
-                alreadyAdded = 1;
-                break;
-            }
-        }
-
-        if (!alreadyAdded && nMarks < MAX_MARKS) {
-            marks[nMarks].offset = target;
-            marks[nMarks].number = nMarks;
-            ++nMarks;
-        }
-    }
-
-    FILE *output = fopen(asmName, "w");
-    if (output == NULL) {
-        perror("Cannot open output assembly file");
-        free(instructions);
-        return ERR_ASM;
-    }
-
-    status = WriteAsm(output, instructions, nInstructions, marks, nMarks);
-
-    if (fclose(output) != 0 && status == ERR_OK) status = ERR_INTPR;
-    free(instructions);
-    return status;
 }
