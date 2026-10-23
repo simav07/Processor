@@ -180,14 +180,6 @@ err_t PrepareByteCode(vmResource * virtualMachine, char * byteCodeFile) {
 
     ASSERT(virtualMachine);
     ASSERT(byteCodeFile);
-    /*
-    char * byteCodeFile = NULL;
-
-    int filenamesStat = ArgvParser(argc, argv, &byteCodeFile);
-    if (filenamesStat != ERR_OK) {
-        printf("Error of reading bytecode filename\n");
-        return ERR_ASM;
-    } */
 
     size_t byteCodeLen = GetByteCode(&(virtualMachine->byteCode), byteCodeFile);
 
@@ -209,13 +201,13 @@ err_t RunVirtualMachine(vmResource * virtualMachine) {
 
     while (virtualMachine->pc < virtualMachine->byteCodeLen) {
 
+        uint8_t command = virtualMachine->byteCode[virtualMachine->pc] & 0x1F;
+        stackElem_t result = 0;
+
         if ((virtualMachine->byteCode[virtualMachine->pc] & 0x1F) == HLT_C) return ERR_OK;
 
         virtualMachine->pcChanged = false;
         size_t instrSize = 0;
-
-        uint8_t command = virtualMachine->byteCode[virtualMachine->pc] & 0x1F;
-        stackElem_t result = 0;
 
         err_t interpreterStat = ReadCommand(virtualMachine, &instrSize, &command, &result);
         if (interpreterStat != ERR_OK)  return interpreterStat;
@@ -239,6 +231,8 @@ err_t ReadCommand(vmResource * virtualMachine, size_t * instrSize, uint8_t * com
 
     ASSERT(virtualMachine);
 
+    CODE_MASKS;
+
     *instrSize = GetInstructionSize(virtualMachine);
 
     uint8_t flags = virtualMachine->byteCode[virtualMachine->pc];
@@ -246,7 +240,7 @@ err_t ReadCommand(vmResource * virtualMachine, size_t * instrSize, uint8_t * com
     size_t argIndex = virtualMachine->pc + 1;
     int32_t value = 0;
 
-    if (flags & 0x40) {
+    if (flags & regMask) {
         
         int32_t regIndex = 0;
 
@@ -260,7 +254,7 @@ err_t ReadCommand(vmResource * virtualMachine, size_t * instrSize, uint8_t * com
         argIndex += sizeof(int32_t);
     }
 
-    if (flags & 0x20) {
+    if (flags & constMask) {
         if (argIndex + sizeof(int32_t) > virtualMachine->byteCodeLen) return ERR_PROCESSING;
 
         memcpy(&value, virtualMachine->byteCode + argIndex, sizeof(value));
