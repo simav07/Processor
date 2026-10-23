@@ -1,5 +1,7 @@
 typedef int err_t;
 
+// TODO getLabel, setLabel
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -121,8 +123,10 @@ err_t GetCodeArguments(Assembler * assembler, size_t * count, size_t i,
 err_t FGetInfoBuffer(const char * fileName, int ** infoBuffer, FileStat * txtFile);
 
 void BeginListing(Assembler * assembler);
-err_t AsmListing(Assembler * assembler, ArgValues newValues, uint8_t newCommandCode, size_t count);
+void AsmListing(Assembler * assembler, ArgValues newValues, uint8_t newCommandCode, size_t count);
 void EndListing(Assembler * assembler);
+
+char * toBinary(uint8_t num, char * buffer, size_t bufSize);
 
 int main(int argc, char * argv[]) {
 
@@ -904,42 +908,59 @@ void BeginListing(Assembler * assembler) {
     
 }
 
-err_t AsmListing(Assembler * assembler, ArgValues newValues, uint8_t newCommandCode, size_t count) {
+void AsmListing(Assembler * assembler, ArgValues newValues, uint8_t newCommandCode, size_t count) {
 
     ASSERT(assembler);
 
     size_t addressStrLen = 20;
-    size_t hexStrLen     = 26;
+    size_t bitStrLen     = 26;
     size_t srcLineLen    = 26;
 
     char addressLine[addressStrLen] = "";
     snprintf(addressLine, addressStrLen, "%#06zx", count);
     fprintf(assembler->listFile, "| %-18s", addressLine);
 
-    char hexCodeLine[hexStrLen] = "";
+    char bitCodeLine[bitStrLen] = "";
     char sourceLine[srcLineLen] = "";
+
+    char cmdCodeBinary[bitStrLen] = "";
 
     switch (newValues.usedArgs)
     {
         case (0): 
-            snprintf(hexCodeLine, hexStrLen, "%#x", newCommandCode);
+            snprintf(bitCodeLine, bitStrLen, "%s", toBinary(newCommandCode, cmdCodeBinary, bitStrLen));
             snprintf(sourceLine, srcLineLen, "%s", newValues.arg1);
             break;
         case (1):
-            snprintf(hexCodeLine, hexStrLen, "%#x %d", newCommandCode, newValues.value1);
+            snprintf(bitCodeLine, bitStrLen, "%s %d", 
+                    toBinary(newCommandCode, cmdCodeBinary, bitStrLen), newValues.value1);
             snprintf(sourceLine, srcLineLen, "%s %s", newValues.arg1, newValues.arg2);
             break;
         case (2):
-            snprintf(hexCodeLine, hexStrLen, "%#x %d %d", newCommandCode, newValues.value1, newValues.value2);
+            snprintf(bitCodeLine, bitStrLen, "%s %d %d", 
+                    toBinary(newCommandCode, cmdCodeBinary, bitStrLen), newValues.value1, newValues.value2);
             snprintf(sourceLine, srcLineLen, "%s %s", newValues.arg1, newValues.arg2);
             break;
-        default: return ERR_ASM;
+        default: break;
     }
-    fprintf(assembler->listFile, "| %-24s", hexCodeLine);
+    fprintf(assembler->listFile, "| %-24s", bitCodeLine);
     fprintf(assembler->listFile, "| %-23s|", sourceLine);
     fprintf(assembler->listFile, "\n");
+}
 
-    return ERR_OK;
+char * toBinary(uint8_t num, char * buffer, size_t bufSize) {
+
+    if (bufSize == 0) return buffer;
+    
+    size_t bits = sizeof(num) * 8;
+    buffer[bits] = '\0';
+    
+    for (int i = bits - 1; i >= 0; i--) {
+        buffer[i] = (num & 1) ? '1' : '0';
+        num >>= 1;
+    }
+    
+    return buffer;
 }
 
 void EndListing(Assembler * assembler) {
