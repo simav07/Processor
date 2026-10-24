@@ -22,11 +22,6 @@ struct Label {
     size_t capacity;
 };
 
-struct Marks {
-    int * Label;
-    size_t nMark  = 0;
-};
-
 struct Assembler {
     char * readFrom = NULL;
     char * writeTo  = NULL;
@@ -372,7 +367,6 @@ err_t GetCodeArguments(Assembler * assembler, size_t * count, size_t i,
     }
 
     Command command   = {.commandPtr = newValues->arg1, .commandSize = strlen(newValues->arg1)};
-    // Argument argument = {.argPtr = newValues->arg2, .argSize = strlen(newValues->arg2)};
 
     err_t interpreterStat = GetCommandCode(&(assembler->asmLabel), &command, newCommandCode, newValues);
 
@@ -516,18 +510,15 @@ err_t GetCommandCode(Label * asmLabel, Command * command, uint8_t * commandCode,
 
     switch(hashCommand) {
 
-    case (HASH_PUSH): {
+    case (HASH_PUSH):
         if (strcmp(command->commandPtr, "PUSH") != 0) return ERR_INTPR;
 
         return GetMasksCode(PUSH_C, command, commandCode, newValues);
-        
-    }
 
-    case (HASH_POP): {
+    case (HASH_POP):
         if (strcmp(command->commandPtr, "POP") != 0) return ERR_INTPR;
 
         return GetMasksCode(POP_C, command, commandCode, newValues);
-    }
 
     case (HASH_IN):
         if (strcmp(command->commandPtr, "IN") != 0) return ERR_INTPR;
@@ -562,12 +553,10 @@ err_t GetCommandCode(Label * asmLabel, Command * command, uint8_t * commandCode,
         if (strcmp(command->commandPtr, "MUL") != 0) return ERR_INTPR;
         return GetMasksCode(MUL_C, command, commandCode, newValues);
 
-    case (HASH_CALL): {
+    case (HASH_CALL):
         if (strcmp(command->commandPtr, "CALL") != 0) return ERR_INTPR;
 
         return CallCommand(asmLabel, newValues, commandCode);
-
-    }
 
     case (HASH_RET):
         if (strcmp(command->commandPtr, "RET") != 0) return ERR_INTPR;
@@ -655,8 +644,6 @@ err_t GetMasksCode(uint8_t defaultValue, Command * command,
 
     uint8_t defaultMask = defaultValue;
 
-    CODE_MASKS;
-
     // No args
     if (defaultValue != PUSH_C && defaultValue != POP_C) {
         if (strlen(argValues->arg2) != 0) return ERR_COMMAND;
@@ -666,13 +653,6 @@ err_t GetMasksCode(uint8_t defaultValue, Command * command,
 
         return ERR_OK;
     }
-
-    // push 10      ConstCode();
-    // push AX      RegCode();
-    // push AX+10   RegConstCode();
-    // push [10]    MemConstCode();
-    // push [AX]    MemRegCode();
-    // push [AX+10] MemRegConstCode();
 
     int bytesArg = 0;
     int32_t newConst = 0;
@@ -740,8 +720,6 @@ err_t ConstCode(uint8_t defaultMask, uint8_t * commandCode, ArgValues * argValue
     ASSERT(commandCode);
     ASSERT(argValues);
 
-    CODE_MASKS;
-
     *commandCode = (defaultMask | constMask);
     
     argValues->value1 = newConst;
@@ -755,8 +733,6 @@ err_t RegCode(uint8_t defaultMask, uint8_t * commandCode, ArgValues * argValues,
     ASSERT(commandCode);
     ASSERT(argValues);
     ASSERT(regName);
-
-    CODE_MASKS;
 
     Argument regArg = {.argPtr = regName, .argSize = strlen(regName)};
 
@@ -778,8 +754,6 @@ err_t MemConstCode(uint8_t defaultMask, uint8_t * commandCode, ArgValues * argVa
     ASSERT(argValues);
     ASSERT(newConst);
 
-    CODE_MASKS;
-
     *commandCode = (defaultMask | ramMask | constMask);
     argValues->value1 = *newConst;
     argValues->usedArgs = 1;
@@ -794,8 +768,6 @@ err_t RegMemCode(uint8_t defaultMask, uint8_t * commandCode, ArgValues * argValu
     ASSERT(argValues);
     ASSERT(regName);
     
-    CODE_MASKS;
-
     Argument regArg = {.argPtr = regName, .argSize = strlen(regName)};
 
     int regCode = GetRegCode(&regArg);
@@ -819,8 +791,6 @@ err_t RegConstCode(uint8_t defaultMask, uint8_t * commandCode,
     ASSERT(newConst);
     ASSERT(regName);
 
-    CODE_MASKS;
-
     Argument regArg = {.argPtr = regName, .argSize = strlen(regName)};
     int regCode = GetRegCode(&regArg);
     if (regCode == ERR_REGISTER) return ERR_REGISTER;
@@ -842,8 +812,6 @@ err_t MemRegConstCode(uint8_t defaultMask, uint8_t * commandCode,
     ASSERT(newConst);
     ASSERT(regName);
     
-    CODE_MASKS;
-
     Argument regArg = {.argPtr = regName, .argSize = strlen(regName)};
 
     int regCode = GetRegCode(&regArg);

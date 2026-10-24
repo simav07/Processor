@@ -8,6 +8,14 @@ typedef double ramElem_t;
 
 const size_t nRegisters = 5;
 
+/**
+ * Struct for virtual machine that includes stack for all variables,
+ * buffer with bytecode, current pc, pc status (changed / not changed),
+ * another stack for collect all info about function's calls, and correct returning.
+ * 5 registers for quick working with memory.
+ * And its own RAM, so we can draw memory contents into the console
+ */
+
 struct vmResource {
 
     stack_t stack = {};
@@ -28,14 +36,21 @@ struct vmResource {
     ramElem_t * RAM = NULL;
 };
 
+//! Size of memory in bytes
 const size_t ramSize = 7000;
 
+/**
+ * Information about frame for drawing in the console
+ * picLength - horizontal size in elements,
+ * picWidth  - vertical high in elements
+ */
 const size_t picLength = 100;
 const size_t picWidth  = 50;
 
 //! Flag for byte code filename
 const char * const CMD_FLAG_BYTECODE = "--bytecode";
 
+//! Special ram cell for bad apple video
 const size_t RAM_CELL_BAD_APPLE = 6999;
 
 //! #define VMDump for debug
@@ -68,6 +83,8 @@ err_t ReadCommand(vmResource * virtualMachine, size_t * instrSize, uint8_t * com
 err_t RunCommand(vmResource * virtualMachine, uint8_t command, stackElem_t result);
 
 //! Commands for virtual machine -------------------------------------
+
+//! Get the last two elemets from stack
 err_t GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b);
 
 err_t Pop(vmResource * virtualMachine, uint8_t flags, stackElem_t result);
@@ -81,17 +98,22 @@ err_t JBE(vmResource * virtualMachine);
 err_t JE(vmResource * virtualMachine);
 err_t JNE(vmResource * virtualMachine);
 
+//! Input from the keyboard
 err_t In(vmResource * virtualMachine);
 
+//! Arithmetical operations
 err_t AddCom(vmResource * virtualMachine);
 err_t SubCom(vmResource * virtualMachine);
 err_t DivCom(vmResource * virtualMachine);
 err_t MulCom(vmResource * virtualMachine);
 err_t Sqrt(vmResource * virtualMachine);
 
+//! Call a function by name written after ":"
 err_t Call(vmResource * virtualMachine);
+//! Return to the last call's pc
 err_t Ret(vmResource * virtualMachine);
 
+//! Print the result of some operations. Get the last elem from stack
 err_t OutCom(vmResource * virtualMachine);
 // -------------------------------------------------------------------
 
@@ -214,7 +236,7 @@ err_t RunVirtualMachine(vmResource * virtualMachine) {
         size_t instrSize = 0;
 
         err_t readingStat = ReadCommand(virtualMachine, &instrSize, &command, &result);
-        if (readingStat != ERR_OK)  return readingStat;
+        if (readingStat != ERR_OK) return readingStat;
 
         err_t runStat = RunCommand(virtualMachine, command, result);
         if (runStat != ERR_OK) return ERR_PROCESSING;
@@ -237,9 +259,9 @@ err_t ReadCommand(vmResource * virtualMachine, size_t * instrSize, uint8_t * com
 
     ASSERT(virtualMachine);
 
-    CODE_MASKS;
-
     *instrSize = GetInstructionSize(virtualMachine);
+
+    // stackElem_t currResult = 0;
 
     uint8_t cmdFlags = virtualMachine->byteCode[virtualMachine->pc];
     
@@ -269,7 +291,23 @@ err_t ReadCommand(vmResource * virtualMachine, size_t * instrSize, uint8_t * com
         argIndex += sizeof(int32_t);
     }
 
+    if (cmdFlags & ramMask) {
+
+
+
+    }
+
     return ERR_OK;
+
+}
+
+stackElem_t * GetArgResult(vmResource * virtualMachine, uint8_t cmdFlags,
+                           stackElem_t result) {
+
+    ASSERT(virtualMachine);
+    ASSERT(virtualMachine->RAM);
+
+    return &virtualMachine->RAM[(size_t)result];
 
 }
 
@@ -313,11 +351,87 @@ err_t RunCommand(vmResource * virtualMachine, uint8_t command, stackElem_t resul
 // Functions for processor
 //------------------------------------------------------------------
 
+#define JUMP_FUNCTION(JMP_NAME, OPER) \
+    err_t JMP_NAME (vmResource * virtualMachine) {\
+        \
+        ASSERT(virtualMachine);                                          \
+                                                                         \
+        err_t popStat1 = ERR_OK;                                         \
+        err_t popStat2 = ERR_OK;                                         \
+                                                                         \
+        stackElem_t b = StackPop(&(virtualMachine->stack), &popStat1);   \
+        if (popStat1 != ERR_OK) return ERR_COMMAND;                      \
+                                                                         \
+        stackElem_t a = StackPop(&(virtualMachine->stack), &popStat2);   \
+        if (popStat2 != ERR_OK) return ERR_COMMAND;                      \
+                                                                         \
+        if (a OPER b) return Jump(virtualMachine,                        \
+                        (size_t)GetInstructionArgument(virtualMachine)); \
+                                                                         \
+        return ERR_OK;                                                   \
+    }
+
+JUMP_FUNCTION(JA, >)
+
+JUMP_FUNCTION(JAE, >=)
+
+JUMP_FUNCTION(JB, <)
+
+JUMP_FUNCTION(JBE, <=)
+
+JUMP_FUNCTION(JE, ==)
+
+JUMP_FUNCTION(JNE, !=)
+
+#define ARITHMETIC_FUNCTION(OPER_NAME, OPER) \
+    err_t OPER_NAME (vmResource * virtualMachine) {                                 \
+                                                                                    \
+        ASSERT(virtualMachine);                                                     \
+                                                                                    \
+        stackElem_t a = 0;                                                          \
+        stackElem_t b = 0;                                                          \
+                                                                                    \
+        if (GetTwoPop(&(virtualMachine->stack), &a, &b) != ERR_OK) {                \
+            return ERR_COMMAND;                                                     \
+        }                                                                           \
+                                                                                    \
+        int pushStat = StackPush(&(virtualMachine->stack), (stackElem_t)(b OPER a));\
+                                                                                    \
+        if (pushStat != ERR_OK) return ERR_COMMAND;                                 \
+                                                                                    \
+        return ERR_OK;                                                              \
+                                                                                    \
+    }
+
+ARITHMETIC_FUNCTION(AddCom, +)
+
+ARITHMETIC_FUNCTION(SubCom, -)
+
+ARITHMETIC_FUNCTION(DivCom, /)
+
+ARITHMETIC_FUNCTION(MulCom, *)
+
+// Get 2 last elems from stack
+err_t GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b) {
+
+    ASSERT(stack);
+    ASSERT(a);
+    ASSERT(b);
+
+    err_t popStat = ERR_OK;
+
+    *a = StackPop(stack, &popStat);
+    if (popStat != ERR_OK) return ERR_COMMAND;
+
+    *b = StackPop(stack, &popStat);
+    if (popStat != ERR_OK) return ERR_COMMAND;
+
+    return ERR_OK;
+}
+
 err_t Pop(vmResource * virtualMachine, uint8_t flags, stackElem_t result) {
 
     ASSERT(virtualMachine);
-
-    CODE_MASKS;
         
     err_t popStat = ERR_OK;
     
@@ -360,8 +474,6 @@ err_t Push(vmResource * virtualMachine, uint8_t flags, stackElem_t result) {
 
     ASSERT(virtualMachine);
 
-    CODE_MASKS;
-
     if (!(flags & 0xE0)) return ERR_COMMAND;
 
     if (flags & ramMask) {
@@ -369,6 +481,7 @@ err_t Push(vmResource * virtualMachine, uint8_t flags, stackElem_t result) {
     }
     
     return StackPush(&(virtualMachine->stack), result);
+    //     StackPush(virtualMachine->stack, GetArgResult(virtualMachine, flags, result));
 }
 
 err_t Jump(vmResource * virtualMachine, size_t jumpIndex) {
@@ -382,84 +495,6 @@ err_t Jump(vmResource * virtualMachine, size_t jumpIndex) {
 
     return ERR_OK;
 
-}
-
-#define JUMP_FUNCTION(JMP_NAME, OPER) \
-    err_t JMP_NAME (vmResource * virtualMachine) {\
-        \
-        ASSERT(virtualMachine);                                          \
-                                                                         \
-        err_t popStat1 = ERR_OK;                                         \
-        err_t popStat2 = ERR_OK;                                         \
-                                                                         \
-        stackElem_t b = StackPop(&(virtualMachine->stack), &popStat1);   \
-        if (popStat1 != ERR_OK) return ERR_COMMAND;                      \
-                                                                         \
-        stackElem_t a = StackPop(&(virtualMachine->stack), &popStat2);   \
-        if (popStat2 != ERR_OK) return ERR_COMMAND;                      \
-                                                                         \
-        if (a OPER b) return Jump(virtualMachine,                        \
-                        (size_t)GetInstructionArgument(virtualMachine)); \
-                                                                         \
-        return ERR_OK;                                                   \
-    }
-
-JUMP_FUNCTION(JA, >)
-
-JUMP_FUNCTION(JAE, >=)
-
-JUMP_FUNCTION(JB, <)
-
-JUMP_FUNCTION(JBE, <=)
-
-JUMP_FUNCTION(JE, ==)
-
-JUMP_FUNCTION(JNE, !=)
-
-#define OPER_FUNCTION(OPER_NAME, OPER) \
-    err_t OPER_NAME (vmResource * virtualMachine) {                                 \
-                                                                                    \
-        ASSERT(virtualMachine);                                                     \
-                                                                                    \
-        stackElem_t a = 0;                                                          \
-        stackElem_t b = 0;                                                          \
-                                                                                    \
-        if (GetTwoPop(&(virtualMachine->stack), &a, &b) != ERR_OK) {                \
-            return ERR_COMMAND;                                                     \
-        }                                                                           \
-                                                                                    \
-        int pushStat = StackPush(&(virtualMachine->stack), (stackElem_t)(b OPER a));\
-                                                                                    \
-        if (pushStat != ERR_OK) return ERR_COMMAND;                                 \
-                                                                                    \
-        return ERR_OK;                                                              \
-                                                                                    \
-    }
-
-OPER_FUNCTION(AddCom, +)
-
-OPER_FUNCTION(SubCom, -)
-
-OPER_FUNCTION(DivCom, /)
-
-OPER_FUNCTION(MulCom, *)
-
-// Get 2 last elems from stack
-err_t GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b) {
-
-    ASSERT(stack);
-    ASSERT(a);
-    ASSERT(b);
-
-    err_t popStat = ERR_OK;
-
-    *a = StackPop(stack, &popStat);
-    if (popStat != ERR_OK) return ERR_COMMAND;
-
-    *b = StackPop(stack, &popStat);
-    if (popStat != ERR_OK) return ERR_COMMAND;
-
-    return ERR_OK;
 }
 
 err_t Sqrt(vmResource * virtualMachine) {
@@ -560,11 +595,12 @@ size_t GetInstructionSize(vmResource * virtualMachine) {
     if (command & 0x20) argCount++;
     if (command & 0x40) argCount++;
 
+    /*
     if ((command & 0x1F) == JUMP_C || (command & 0x1F) == JA_C ||
         (command & 0x1F) == JAE_C || (command & 0x1F) == JB_C ||
         (command & 0x1F) == JBE_C || (command & 0x1F) == JE_C ||
         (command & 0x1F) == JNE_C || (command & 0x1F) == CALL_C) argCount = 1;
-
+    */
     size_t instrSize = 1 + argCount * sizeof(int32_t);
     if (instrSize > virtualMachine->byteCodeLen - virtualMachine->pc) return 0;
 
