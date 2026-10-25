@@ -36,13 +36,12 @@ For demonstrate the power of the processor, the "Bad apple" video clip is render
 
    The processor has five registers: `OX`, `AX`, `BX`, `CX` and `DX`. Register identifiers and constants are encoded in the instruction arguments, while the command byte stores the corresponding masks.
 
-4. **Labels and control flow.** Labels can be declared with `:label`, and used by jump and function-call commands. Conditional jumps compare two values taken from the stack. The `CALL` and `RET`
-5. commands use a separate function stack to save and restore return addresses, which makes recursive functions possible.
+4. **Labels and control flow.** Labels can be declared with `:label`, and used by jump and function-call commands. Conditional jumps compare two values taken from the stack. The `CALL` and `RET` commands use a separate function stack to save and restore return addresses, which makes recursive functions possible.
 
-6. **Stack-based arithmetic.** Arithmetic commands take their operands from the stack and push the result back. The implemented operations include addition, subtraction, multiplication,
+5. **Stack-based arithmetic.** Arithmetic commands take their operands from the stack and push the result back. The implemented operations include addition, subtraction, multiplication,
    division and square root. The `IN` command reads a value from standard input, while `OUT` prints a value from the stack.
 
-7. **Assembler listing.** The assembler can create a listing containing instruction addresses, encoded command bytes, arguments and the corresponding source lines.
+6. **Assembler listing.** The assembler can create a listing containing instruction addresses, encoded command bytes, arguments and the corresponding source lines.
    This is useful for checking how assembly instructions are translated into bytecode.
 
 ![Assembler listing](pictures/listing.png)
