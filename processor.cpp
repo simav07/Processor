@@ -270,7 +270,6 @@ err_t GetCommand(vmResource * virtualMachine, size_t * instrSize,
         memcpy(&value, virtualMachine->byteCode + argIndex, sizeof(value));
 
         currResult += value;
-        **result = currResult;
         argIndex += sizeof(int32_t);
     }
 
@@ -301,6 +300,8 @@ err_t GetCommand(vmResource * virtualMachine, size_t * instrSize,
 
         return ERR_OK;
     }
+
+    **result = currResult;
 
     return ERR_OK;
 
@@ -438,6 +439,7 @@ err_t GetTwoPop(stack_t * stack, stackElem_t * a, stackElem_t * b) {
 err_t Pop(vmResource * virtualMachine, stackElem_t * result) {
 
     ASSERT(virtualMachine);
+    ASSERT(result);
         
     err_t popStat = ERR_OK;
 
@@ -447,6 +449,13 @@ err_t Pop(vmResource * virtualMachine, stackElem_t * result) {
     if (popStat != ERR_OK) return ERR_COMMAND;
     
     *result = var;
+
+    //! Special memory cell using as signal to draw a shot
+    if (*result == RAM_CELL_BAD_APPLE) {
+            DrawRam(virtualMachine); 
+            Sleep(33);  // 1000 / 30 fps
+    }
+
     return ERR_OK;
 }
 
