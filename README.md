@@ -70,9 +70,9 @@ There is some commands and their description
 
 Each instruction starts with one command byte. Its lower five bits contain the command code; the three upper bits are masks that describe the instruction's operands:
 
-- `0x20` (`CONST`) вЂ” the instruction contains a 32-bit constant or offset.
-- `0x40` (`REG`) вЂ” the instruction contains a 32-bit register identifier.
-- `0x80` (`RAM`) вЂ” the operand refers to RAM.
+- `0x20` (`CONST`) the instruction contains a 32-bit constant or offset.
+- `0x40` (`REG`) the instruction contains a 32-bit register identifier.
+- `0x80` (`RAM`) the operand refers to RAM.
 
 Each encoded argument occupies four bytes (`int32_t`). If an instruction uses both a register and an offset, both arguments are stored after the command byte.
 Instructions without arguments consist of the command byte alone. The exact operand interpretation depends on the combination of masks and the command.
