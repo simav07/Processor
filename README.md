@@ -25,6 +25,8 @@ For demonstrate the power of the processor, the "Bad apple" video clip is render
 2. The processor's possibility of graphical representation of RAM in the console. As an example, you can draw geometric shapes.
    I implemented the compilation and execution of bytecode that draws the "Bad apple" video in the console.
 
+  ![Bad apple](pictures/bad_apple.gif)
+
 3. **Register and RAM addressing.** The `PUSH` and `POP` commands support several ways to access data:
    - a constant, for example `PUSH 10`;
    - a register, for example `PUSH AX`;
@@ -43,8 +45,7 @@ For demonstrate the power of the processor, the "Bad apple" video clip is render
 7. **Assembler listing.** The assembler can create a listing containing instruction addresses, encoded command bytes, arguments and the corresponding source lines.
    This is useful for checking how assembly instructions are translated into bytecode.
 
-   
-
+![Assembler listing](pictures/listing.png)
 ## Instruction set
 
 There is some commands and their description
