@@ -79,7 +79,7 @@ int32_t GetInstructionArgument(vmResource * virtualMachine);
 
 
 //! Reading command code: analysis of flags, args
-err_t ReadCommand(vmResource * virtualMachine, size_t * instrSize, uint8_t * command, stackElem_t ** result);
+err_t GetCommand(vmResource * virtualMachine, size_t * instrSize, uint8_t * command, stackElem_t ** result);
 //! Run commands
 err_t RunCommand(vmResource * virtualMachine, uint8_t command, stackElem_t * result);
 
@@ -232,7 +232,7 @@ err_t RunVirtualMachine(vmResource * virtualMachine) {
         virtualMachine->pcChanged = false;
         size_t instrSize = 0;
 
-        err_t readingStat = ReadCommand(virtualMachine, &instrSize, &command, &result);
+        err_t readingStat = GetCommand(virtualMachine, &instrSize, &command, &result);
         if (readingStat != ERR_OK) return readingStat;
 
         err_t runStat = RunCommand(virtualMachine, command, result);
@@ -250,7 +250,7 @@ err_t RunVirtualMachine(vmResource * virtualMachine) {
     return ERR_PROCESSING;
 }
 
-err_t ReadCommand(vmResource * virtualMachine, size_t * instrSize,
+err_t GetCommand(vmResource * virtualMachine, size_t * instrSize,
                                                uint8_t * command, stackElem_t ** result) {
 
     ASSERT(virtualMachine);
@@ -326,25 +326,26 @@ err_t RunCommand(vmResource * virtualMachine, uint8_t command, stackElem_t * res
 
     switch (command) {
 
-        case PUSH_C: return Push(virtualMachine, result);
-        case POP_C:  return Pop(virtualMachine, result);
+        case PUSH_C: return Push   (virtualMachine, result);
+        case POP_C:  return Pop    (virtualMachine, result);
 
-        case JUMP_C: return Jump(virtualMachine, (size_t)GetInstructionArgument(virtualMachine));
-        case JA_C:   return JA(virtualMachine);
-        case JAE_C:  return JAE(virtualMachine);
-        case JB_C:   return JB(virtualMachine);
-        case JBE_C:  return JBE(virtualMachine);
-        case JE_C:   return JE(virtualMachine);
-        case JNE_C:  return JNE(virtualMachine);
-        case IN_C:   return In(virtualMachine);
-        case RET_C:  return Ret(virtualMachine);
-        case CALL_C: return Call(virtualMachine);
-        case ADD_C:  return AddCom(virtualMachine);
-        case SUB_C:  return SubCom(virtualMachine);
-        case DIV_C:  return DivCom(virtualMachine);
-        case MUL_C:  return MulCom(virtualMachine);
-        case SQRT_C: return Sqrt(virtualMachine);
-        case OUT_C:  return OutCom(virtualMachine);
+        // TODO to align
+        case JUMP_C: return Jump   (virtualMachine, (size_t)GetInstructionArgument(virtualMachine));
+        case JA_C:   return JA     (virtualMachine);
+        case JAE_C:  return JAE    (virtualMachine);
+        case JB_C:   return JB     (virtualMachine);
+        case JBE_C:  return JBE    (virtualMachine);
+        case JE_C:   return JE     (virtualMachine);
+        case JNE_C:  return JNE    (virtualMachine);
+        case IN_C:   return In     (virtualMachine);
+        case RET_C:  return Ret    (virtualMachine);
+        case CALL_C: return Call   (virtualMachine);
+        case ADD_C:  return AddCom (virtualMachine);
+        case SUB_C:  return SubCom (virtualMachine);
+        case DIV_C:  return DivCom (virtualMachine);
+        case MUL_C:  return MulCom (virtualMachine);
+        case SQRT_C: return Sqrt   (virtualMachine);
+        case OUT_C:  return OutCom (virtualMachine);
         case HLT_C:  return ERR_OK;
 
         default:     return ERR_COMMAND;

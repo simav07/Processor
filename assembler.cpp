@@ -662,20 +662,19 @@ err_t GetMasksCode(uint8_t defaultValue, Command * command,
                                && argValues->arg2[bytesArg] == '\0') {
 
         return ConstCode(defaultMask, commandCode, argValues, newConst);
-    
     }
 
-    //! For registers -----------------------------------------
     char regName[3] = "";
     bytesArg = 0;
 
+    // Register
     if (sscanf(argValues->arg2, "%2[A-ZX]%n", regName, &bytesArg) == 1
                     && bytesArg == 2 && argValues->arg2[bytesArg] == '\0') {
             
             return RegCode(defaultMask, commandCode, argValues, regName);
     }
 
-    //! For ram ------------------------------------------------------
+    // Memory Constant
     bytesArg = 0;
     if (sscanf(argValues->arg2, "[%d]%n", &newConst, &bytesArg) == 1
                             && argValues->arg2[bytesArg] == '\0') {
@@ -683,26 +682,25 @@ err_t GetMasksCode(uint8_t defaultValue, Command * command,
         return MemConstCode(defaultMask, commandCode, argValues, &newConst);
     }
 
-    //! For register and ram -----------------------------------------
+    // Register
     bytesArg = 0;
     regName[0] = '\0';
-    
     if (sscanf(argValues->arg2, "[%2[A-ZX]]%n", regName, &bytesArg) == 1 
                                         && argValues->arg2[bytesArg] == '\0') {
 
         return RegMemCode(defaultMask, commandCode, argValues, regName);
     }
 
-    //! For register + const  ----------------------------------------
+    // Register + Constant without brackets
     bytesArg = 0;
     regName[0] = '\0';
-    sscanf(argValues->arg2, "%2[A-ZX]+%d%n", regName, &newConst, &bytesArg);
-    if (argValues->arg2[bytesArg] == '\0') {
+    if (sscanf(argValues->arg2, "%2[A-ZX]+%d%n", regName, &newConst, &bytesArg) == 2
+                            && argValues->arg2[bytesArg] == '\0') {
 
         return RegConstCode(defaultMask, commandCode, argValues, regName, &newConst);
     }
 
-    //! For RAM, register and const
+    // RAM, register and const with brackets
     bytesArg = 0;
     regName[0] = '\0';
     if (sscanf(argValues->arg2, "[%2[A-ZX]+%d]%n", regName, &newConst, &bytesArg) == 2
@@ -712,8 +710,8 @@ err_t GetMasksCode(uint8_t defaultValue, Command * command,
     }
 
     return ERR_ASM;
-
 }
+
 
 err_t ConstCode(uint8_t defaultMask, uint8_t * commandCode, ArgValues * argValues, int32_t newConst) {
 
